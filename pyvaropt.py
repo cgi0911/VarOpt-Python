@@ -8,6 +8,7 @@ import collections as cl
 import random as rd
 import heapq
 import math
+import copy
 
 
 
@@ -365,6 +366,131 @@ class KWTable:
 
 
 
+class PrefixQueryTable:
+    """The prefix query table. In this table, each row is an IPv4 prefix either in
+    the source IP or destination IP. Prefix query table is typically initialized from
+    a text file, but can also add/delete items in an ad-hoc manner.
+    """
+    def __init__(self, fn=None):
+        """
+        """
+        self.table = cl.OrderedDict()                       # OrderedDict will remember item insert order
+        self.checkdict = {}
+
+        if fn != None:
+            self.from_txt_file(fn)
+
+
+
+
+    def from_txt_file(self, fn):
+        """Parse a text file into prefix query table. Each row is in the format:
+        <IP segment in CIDR expression> <src or dst>
+        An example:
+        123.45.67.0/24 src
+        
+        This function can be repeatedly call to add entries from various files.
+        All entries in the table shall be unique.
+        """
+        inFile = open(fn, "r")
+        for line in inFile:
+            fields = line.rstrip().split(' ')           # Parse the line
+            ip_str          = fields[0]
+            try: src_dst    = fields[1]
+            except: src_dst = "src"
+            ip_nw           = na.IPNetwork(ip_str)      # IP network in netaddr format
+            ip_prefixlen    = ip_nw.prefixlen           # Prefix length
+            ip              = ip_nw.cidr.ip             # CIDR IP in netaddr format
+            ip_int          = int(ip)                   # CIDR IP in integer
+            if src_dst == "dst":    src_dst = "dst"
+            else:                   src_dst = "src"     # Each row defines a source IP segment
+                                                        # unless explicitly specified as dst.
+            
+            #Add key to self.table and corresponding check item to self.checkdict
+            key = (ip_int, ip_prefixlen, src_dst)       # Key is a tuple of (ip in iteger, prefix length, src/dst string)
+            if key in self.table:               continue                    # Already existing item. Skip processing. Keep counter value.
+            else:                               self.table[key] = 0.0       # New item. Add an entry. Counter set to 0.0.
+            checkitem = (src_dst, ip_prefixlen)
+            if checkitem in self.checkdict:     self.checkdict[checkitem] += 1  # Already existing item.
+            else:                               self.checkdict[checkitem] = 1   # New item. Add an entry. Counter set to 1.                            
+                
+                
+
+
+    def __del__(self):
+        # Use default destructors.
+        pass
+
+
+
+
+    def __len__(self):
+        return 
+
+
+
+
+    def __add__(lhs, rhs):
+        ret = copy.copy(lhs)        # Shallow copy
+        for key in rhs.table:
+            if key in ret.table:    # Overlapping items
+                ret.table[key] += rhs.table[key]    # Add up the counter values
+                continue
+            else:
+                ret.table[key] = rhs.table[key]
+                checkitem = PrefixQueryTable._get_checkitem_from_key(key)
+                if checkitem in ret.checkdict:  ret.checkdict[checkitem] += 1
+                else:                           ret.checkdict[checkitem] = 1
+
+
+
+
+    @classmethod
+    def _get_checkitem_from_key(cls, key):
+        return (key[2], key[1])
+
+
+
+    
+    def get_data(self):
+        ret = []
+        for k in self.table.keys():                     # Key order matters!
+            ip_nw = na.IPNetwork(na.IPAddress(k[0]))
+            ip_nw.prefixlen = k[1]
+            ip_nw = ip_nw.cidr                          # Remove redundant bits
+            ret.append((str(ip_nw), self.table[k]))     # Convert to string
+        return ret
+
+
+
+    
+    def get_keys(self):
+        ret = []
+        for k in self.table.keys():                     # Key order matters!
+            ip_nw = na.IPNetwork(na.IPAddress(k[0]))
+            ip_nw.prefixlen = k[1]
+            ip_nw = ip_nw.cidr                          # Remove redundant bits
+            ret.append(str(ip_nw))                      # Convert to string
+        return ret
+
+
+
+
+    def get_values(self):
+        ret = []
+        for k in self.table.keys():                     # Key order matters!
+            ip_nw = na.IPNetwork(na.IPAddress(k[0]))
+            ip_nw.prefixlen = k[1]
+            ip_nw = ip_nw.cidr                          # Remove redundant bits
+            ret.append(self.table[k])     # Convert to string
+        return ret
+
+
+
+
+    def query(self, kwtable):
+        pass
+
+
 if __name__ == "__main__":
-    t1      = KWTable(fn="rec3.rec", filetype="flowbin")
-    t2      = t1.rsvr_sample(10000)
+    pass

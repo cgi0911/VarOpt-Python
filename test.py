@@ -1,14 +1,14 @@
 #!/usr/bin/python
 
 import sys
-import varopt as vo
-from varopt import KWTable
+import pyvaropt as vo
+from pyvaropt import KWTable
 import time
 import argparse as arp
 
 parser = arp.ArgumentParser(description="Command line arguments.")
-parser.add_argument('-fn1', type=str, default="rec1.rec")
-parser.add_argument('-fn2', type=str, default="rec2.rec")
+parser.add_argument('-fn1', type=str, default="data/rec1.rec")
+parser.add_argument('-fn2', type=str, default="data/rec2.rec")
 args = parser.parse_args()
 
 
