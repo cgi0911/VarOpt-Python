@@ -6,6 +6,7 @@ import struct
 import netaddr as na 
 import collections as cl
 import random as rd
+import numpy as np
 import heapq
 import math
 import copy
@@ -524,5 +525,50 @@ class PrefixQueryTable:
         for key in self.table:
             self.table[key] = 0.0
 
+
+
+
+class Predictors:
+    """This class encapsulates two things: A transition matrix and a state vector.
+    Transistion matrix is an MxM matrix of real numbers.
+    The state vector is an array of M KWTable objects. 
+    """
+    def __init__(self, model="SHW", **kwargs):
+        """
+        """
+        if model == "SHW":
+            alpha   = kwargs.get("alpha")
+            beta    = kwargs.get("beta")
+            gamma   = kwargs.get("gamma")
+            period  = kwargs.get("period")
+            self.statevec
+        pass
+    
+    
+    
+    
+    def init_model(self, model="SHW", alpha, beta, gamma, period):
+        pass
+    
+    
+    
+    
+    def init_trans_matrix(self, model="SHW", **kwargs):
+        """
+        """
+        if model == "SHW":
+            self.matrix = init_trans_matrix_SHW(alpha, beta, gamma) 
+        pass
+    
+    
+    
+    
+    
+    def transition(self):
+        pass
+    
+    
+    
+    
 if __name__ == "__main__":
     pass
