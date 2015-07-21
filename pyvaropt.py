@@ -67,7 +67,7 @@ class KWTable:
                 self.read_from_flowtxt(fn)
             else:
                 # traces not yet supported
-                sys.stderr.write("Unrecognized file type. Please check your keyword arguments: %s" %(str(kwargs)))
+                sys.stderr.write("Unrecognized file type. Please check your keyword arguments: %s\n" %(str(kwargs)))
                 return
         
         # ---- Initialize from another KWTable ----
@@ -77,7 +77,7 @@ class KWTable:
 
         # ---- Show error message if no way to initialize from file or another KWTable ----
         else:
-            sys.stderr.write("Cannot do initilization from file or KWTable. Please check your keyword arguments: %s" %(str(kwargs)))
+            sys.stderr.write("Cannot do initilization from file or KWTable. Please check your keyword arguments: %s\n" %(str(kwargs)))
             return
 
 
@@ -536,24 +536,37 @@ class Predictors:
     def __init__(self, model="SHW", **kwargs):
         """
         """
+        self.statevec   = self.init_statevec(model, kwargs)
+        self.matrix     = self.init_matrix(model, kwargs)
+        pass
+    
+    
+    
+    
+    def init_statevec(self, model="SHW", **kwargs):
+        """
+        """
         if model == "SHW":
-            alpha   = kwargs.get("alpha")
-            beta    = kwargs.get("beta")
-            gamma   = kwargs.get("gamma")
-            period  = kwargs.get("period")
-            self.statevec
+            return init_statevec_shw(kwargs)        
+        else:
+            sys.stderr.write("Unrecognized prediction model %s.\n" %(model))
+            return None
+    
+    
+    
+    
+    def init_statevec_shw(self, **kwargs):
+        """Initialize state vector 
+        """
+        alpha = kwargs["alpha"]
+        beta  = kwargs["beta"]
+        gamma = kwargs["gamma"]
+        
         pass
     
     
     
-    
-    def init_model(self, model="SHW", alpha, beta, gamma, period):
-        pass
-    
-    
-    
-    
-    def init_trans_matrix(self, model="SHW", **kwargs):
+    def init_matrix(self, model="SHW", **kwargs):
         """
         """
         if model == "SHW":
