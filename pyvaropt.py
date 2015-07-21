@@ -71,7 +71,7 @@ class KWTable:
         
         # ---- Initialize from another KWTable ----
         elif in_table!=None:
-            self.table = in_table.table.copy()
+            self.table = in_table.table.copy()  # Use the built-in copy method of defaultdict
 
 
         # ---- Show error message if no way to initialize from file or another KWTable ----
@@ -91,7 +91,7 @@ class KWTable:
 
 
     
-    def getsum(self):
+    def get_sum(self):
         """Simply get the sum of all weights.
         """
         return sum( self.table.values() )
@@ -99,7 +99,7 @@ class KWTable:
 
 
 
-    def getabssum(self):
+    def get_abssum(self):
         """Get the sum of all absolute weights.
         """
         return sum( [abs(v) for v in self.table.values()] )
@@ -262,18 +262,22 @@ class KWTable:
 
 
 
-    @classmethod
-    def aggr(cls, lhs, rhs, lcoeff, rcoeff):
+    def aggr(self, rhs=None, lcoeff=1.0, rcoeff=1.0):
         """Aggregate two KWTables by given coefficients. Return a new KWTable.
         ret = lcoeff * lhs + rcoeff * rhs
         """
-        ret = KWTable(in_table=lhs)
-        ret.scale_inplace(lcoeff)
-        for key, wt in rhs.table.iteritems():
-            if not key in ret.table:
-                ret.table[key] = rcoeff * wt
-            else:
-                ret.table[key] += rcoeff * wt
+        ret = KWTable(in_table=self)
+
+        if lcoeff != 1.0:
+            ret.scale_inplace(lcoeff)
+
+        if rhs != None:
+            for key, wt in rhs.table.iteritems():
+                if not key in ret.table:
+                    ret.table[key] = rcoeff * wt
+                else:
+                    ret.table[key] += rcoeff * wt
+                    if ret.table[key] == 0.0:   del ret.table[key]  # Delete the zero item.
 
         return ret
 
@@ -307,8 +311,9 @@ class KWTable:
             rand_num    = 0.0                       # A uniform random number between 0 and 1
 
 
-            for i in range(k):                      # Push k items to heap.
+            while len(l_heap) < k:                      # Push k items to heap.
                 key, wt = dict_iter.next()
+                if wt == 0.0:   continue                # Ignore zero items
                 heapq.heappush(l_heap, (abs(wt), key))  # Note that each element in the heap is a 
                                                         # 2-tuple (abs(wt), key). It is because tuples
                                                         # compared in lexicographical order (compare first, then second)
@@ -371,7 +376,7 @@ class PrefixQueryTable:
     the source IP or destination IP. Prefix query table is typically initialized from
     a text file, but can also add/delete items in an ad-hoc manner.
     """
-    def __init__(self, fn=None):
+    def __init__(self, fn=None, in_table=None):
         """
         """
         self.table = cl.OrderedDict()                       # OrderedDict will remember item insert order
@@ -379,6 +384,12 @@ class PrefixQueryTable:
 
         if fn != None:
             self.from_txt_file(fn)
+
+        elif in_table != None:
+            self.table = copy.copy(in_table.table)
+            self.checkdict = copy.copy(in_table.checkdict)
+
+
 
 
 
@@ -489,8 +500,29 @@ class PrefixQueryTable:
 
 
     def query(self, kwtable):
-        pass
+        """
+        """
+        for kwkey, wt in kwtable.table.iteritems():
+            sip, dip = struct.unpack("II", kwkey[:8])
+            for checkitem in self.checkdict:   
+                src_dst = checkitem[0]
+                if src_dst == "src":        ipkey = sip
+                else:                       ipkey = dip
+                prefixlen = checkitem[1]
+                ipkey = ipkey >> (32 - prefixlen) << (32 - prefixlen)
+                prefixkey = (ipkey, prefixlen, src_dst)
 
+                if prefixkey in self.table:
+                    self.table[prefixkey] += wt
+
+
+
+
+    def reset(self):
+        """
+        """
+        for key in self.table:
+            self.table[key] = 0.0
 
 if __name__ == "__main__":
     pass
