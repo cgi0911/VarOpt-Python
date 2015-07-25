@@ -537,13 +537,11 @@ class Predictors:
     """
     def __init__(self, model="SHW", folder=".", **kwargs):
         """
-        Here are keyword arguments with defaults:
-            model
-        Here are optional keyword arguments:
         """
         # ---- Model-neutral parameters ----
         self.folder     = folder                        # The folder of the data set.
-        self.fn_list    = sorted(for fn in os.listdir(self.folder) if fn.split('.')[0].isdigit()) 
+        self.fn_list    = sorted( [fn for fn in os.listdir(self.folder) \
+                                  if fn.split('.')[0].isdigit()] ) 
         
         """
         self.filetype   = kwargs.get("filetype", "flowbin")     # The file type of data set
@@ -562,7 +560,7 @@ class Predictors:
     
     
     
-    def get_time_slot(self, k, max_mem=k*10):
+    def get_time_slot(self, k, max_mem=3000000):
         """
         max_mem: Maximum memory size (# entries) used during aggregation
         """
