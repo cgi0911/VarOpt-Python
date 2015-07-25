@@ -10,6 +10,7 @@ import numpy as np
 import heapq
 import math
 import copy
+import os
 
 
 
@@ -531,17 +532,61 @@ class PrefixQueryTable:
 class Predictors:
     """This class encapsulates two things: A transition matrix and a state vector.
     Transistion matrix is an MxM matrix of real numbers.
-    The state vector is an array of M KWTable objects. 
+    The u-vector is a vector of M real numbers.
+    The state vector is a vector of M KWTable objects. 
     """
-    def __init__(self, model="SHW", **kwargs):
+    def __init__(self, model="SHW", folder=".", **kwargs):
         """
+        Here are keyword arguments with defaults:
+            model
+        Here are optional keyword arguments:
         """
+        # ---- Model-neutral parameters ----
+        self.folder     = folder                        # The folder of the data set.
+        self.fn_list    = sorted(for fn in os.listdir(self.folder) if fn.split('.')[0].isdigit()) 
+        
+        """
+        self.filetype   = kwargs.get("filetype", "flowbin")     # The file type of data set
+        self.grouping   = kwargs.get("grouping", 1)     # How many files in a time slot?
+        self.period     = kwargs["period"]              # How many time slots in a period?
+        self.mat_size   = 0                             # Number of column/rows in transition matrix.
+                                                        # Value will be assigned later.
+        
+        # ---- Initialize the model ----
+        self.fn_list_iter = iter(self.fn_list)
         self.statevec   = self.init_statevec(model, kwargs)
         self.matrix     = self.init_matrix(model, kwargs)
-        pass
+        self.uvec       = self.init_uvec(model, kwargs)
+        """
     
     
     
+    
+    def get_time_slot(self, k, max_mem=k*10):
+        """
+        max_mem: Maximum memory size (# entries) used during aggregation
+        """
+        ret = KWTable()
+        for i in range(self.grouping):
+            try:
+                fn = self.fn_list_iter.next()
+                fpath = os.path.join(self.folder, fn)
+                if self.filetype == "flowbin":
+                    ret.read_from_flowbin(fpath)
+                elif self.filetype == "flowtxt":
+                    ret.read_from_flowtxt(fpath)
+                else:
+                    sys.stderr.write("Predictors.get_time_slot(): Unrecognized file type %s.\n"
+                                     %(self.filetype))
+            except StopIteration:
+                sys.stderr.write("get_time_slot(): No more files to read in the data set! Last file name %s\n"
+                                 %(fpath))
+                break
+        
+        return ret
+        
+        
+        
     
     def init_statevec(self, model="SHW", **kwargs):
         """
@@ -549,7 +594,7 @@ class Predictors:
         if model == "SHW":
             return init_statevec_shw(kwargs)        
         else:
-            sys.stderr.write("Unrecognized prediction model %s.\n" %(model))
+            sys.stderr.write("Predictors.init_statevec(): Unrecognized prediction model %s.\n" %(model))
             return None
     
     
@@ -566,13 +611,41 @@ class Predictors:
     
     
     
+    def init_uvec(self, model="SHW", **kwargs):
+        """
+        """
+        if model == "SHW":
+            return init_uvec_shw(kwargs)
+        else:
+            sys.stderr.write("Unrecognized prediction model %s.\n" %(model))
+            return None
+    
+    
+    
+    def init_uvec_shw(self):
+        """
+        """
+        pass
+    
+    
+    
+    
     def init_matrix(self, model="SHW", **kwargs):
         """
         """
         if model == "SHW":
-            self.matrix = init_trans_matrix_SHW(alpha, beta, gamma) 
+            alpha = kwargs["alpha"]
+            beta  = kwargs["beta"]
+            gamma = kwargs["gamma"]
+            self.matrix = init_trans_matrix_shw(alpha, beta, gamma) 
         pass
     
+    
+    
+    
+    def init_trans_matrix_shw(self, alpha, beta, gamma):
+        ret = np.zeros()
+        pass
     
     
     
