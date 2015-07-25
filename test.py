@@ -17,7 +17,7 @@ pp = pprint.PrettyPrinter(indent=2)
 
 #@profile
 def mainfunc():
-    myPredict = pvo.Prediction()
+    myPredict = pvo.Prediction(folder=sys.argv[1])
     print myPredict.folder
     print myPredict.fnlist
 
