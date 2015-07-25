@@ -529,7 +529,7 @@ class PrefixQueryTable:
 
 
 
-class Predictors:
+class Prediction:
     """This class encapsulates two things: A transition matrix and a state vector.
     Transistion matrix is an MxM matrix of real numbers.
     The u-vector is a vector of M real numbers.
