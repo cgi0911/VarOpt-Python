@@ -541,28 +541,30 @@ class Prediction:
         # ---- Model-neutral parameters ----
         self.folder     = folder                        # The folder of the data set.
         self.fn_list    = sorted( [fn for fn in os.listdir(self.folder) \
-                                  if fn.split('.')[0].isdigit()] ) 
-        
-        """
+                                  if isfile(os.path.join(self.folder, fn)) \
+                                  and fn.split('.')[0].isdigit()] ) 
+                                                        # Get the list of flow record data files
+                                                        # Sorted. We assume all files have simply
+                                                        # timestamp as their filenames.
         self.filetype   = kwargs.get("filetype", "flowbin")     # The file type of data set
-        self.grouping   = kwargs.get("grouping", 1)     # How many files in a time slot?
-        self.period     = kwargs["period"]              # How many time slots in a period?
+        self.grouping   = kwargs.get("grouping", 24)    # How many files in a time slot?
+        self.period     = kwargs.get("period", 7)       # How many time slots in a period?
         self.mat_size   = 0                             # Number of column/rows in transition matrix.
-                                                        # Value will be assigned later.
+                                                        # Value will be assigned later according to model.
         
         # ---- Initialize the model ----
         self.fn_list_iter = iter(self.fn_list)
         self.statevec   = self.init_statevec(model, kwargs)
-        self.matrix     = self.init_matrix(model, kwargs)
-        self.uvec       = self.init_uvec(model, kwargs)
-        """
+        #self.matrix     = self.init_matrix(model, kwargs)
+        #self.uvec       = self.init_uvec(model, kwargs)
     
     
     
     
     def get_time_slot(self, k, max_mem=3000000):
         """
-        max_mem: Maximum memory size (# entries) used during aggregation
+        k:        Reservoir sample size
+        max_mem:  Maximum memory size (# entries) allowed during aggregation.
         """
         ret = KWTable()
         for i in range(self.grouping):
@@ -575,12 +577,17 @@ class Prediction:
                     ret.read_from_flowtxt(fpath)
                 else:
                     sys.stderr.write("Predictors.get_time_slot(): Unrecognized file type %s.\n"
-                                     %(self.filetype))
+                                     %(self.filetype))            
+                if len(ret) >= max_mem:
+                    ret.rsvr_sample(k)
+                
             except StopIteration:
                 sys.stderr.write("get_time_slot(): No more files to read in the data set! Last file name %s\n"
                                  %(fpath))
                 break
         
+        if len(ret) > k:
+            ret.rsvr_sample(k)
         return ret
         
         
