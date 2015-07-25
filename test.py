@@ -8,7 +8,7 @@ import argparse as arp
 import pprint
 
 parser = arp.ArgumentParser(description="Command line arguments.")
-parser.add_argument('-fn1', type=str, default="data/rec1.rec")
+parser.add_argument('-fn1', type=str, default=".")
 parser.add_argument('-fn2', type=str, default="data/rec2.rec")
 parser.add_argument('-fn3', type=str, default="data/prefixes.txt")
 args = parser.parse_args()

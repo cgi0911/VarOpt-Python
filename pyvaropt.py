@@ -541,7 +541,7 @@ class Prediction:
         # ---- Model-neutral parameters ----
         self.folder     = folder                        # The folder of the data set.
         self.fn_list    = sorted( [fn for fn in os.listdir(self.folder) \
-                                  if isfile(os.path.join(self.folder, fn)) \
+                                  if os.path.isfile(os.path.join(self.folder, fn)) \
                                   and fn.split('.')[0].isdigit()] ) 
                                                         # Get the list of flow record data files
                                                         # Sorted. We assume all files have simply
