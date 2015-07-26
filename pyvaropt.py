@@ -227,17 +227,30 @@ class KWTable:
 
 
 
-    def __iadd__(lhs, rhs):
-        """Aggregate rhs to lhs in place.
+    def __iadd__(self, rhs):
+        """Aggregate rhs by coeff +1.0 to self in place.
         """
         for key, wt in rhs.table.iteritems():
-            #lhs.table[key] = lhs.table.get(key, 0.0) + wt
-            if not key in lhs.table:
-                lhs.table[key] = wt
+            if not key in self.table:
+                self.table[key] = wt
             else:
-                lhs.table[key] += wt
-        return lhs
+                self.table[key] += wt
+        return self
 
+
+
+
+    def __isub__(self, rhs):
+        """Aggregate rhs by coeff -1.0 from self in place.
+        """
+        for key, wt in rhs.table.iteritems():
+            if not key in self.table:
+                self.table[key] = -1.0 * wt
+            else:
+                self.table[key] -= wt
+                if self.table[key] == 0.0: del self.table[key]
+        return self
+        
 
 
 
@@ -551,17 +564,19 @@ class Prediction:
         self.period     = kwargs.get("period", 7)       # How many time slots in a period?
         self.mat_size   = 0                             # Number of column/rows in transition matrix.
                                                         # Value will be assigned later according to model.
+        self.max_mem    = kwargs.get("max_mem", 3000000)    # Max allowed size for any aggregation used
+        self.k          = kwargs["k"]
         
         # ---- Initialize the model ----
-        self.fn_list_iter = iter(self.fn_list)
-        self.statevec   = self.init_statevec(model, kwargs)
+        self.fn_list_iter = iter(self.fn_list)          # Iterator for fn_list
+        self.statevec   = self.init_statevec(kwargs)
         #self.matrix     = self.init_matrix(model, kwargs)
         #self.uvec       = self.init_uvec(model, kwargs)
     
     
     
     
-    def get_time_slot(self, k, max_mem=3000000):
+    def read_time_slot(self):
         """
         k:        Reservoir sample size
         max_mem:  Maximum memory size (# entries) allowed during aggregation.
@@ -578,26 +593,27 @@ class Prediction:
                 else:
                     sys.stderr.write("Predictors.get_time_slot(): Unrecognized file type %s.\n"
                                      %(self.filetype))            
-                if len(ret) >= max_mem:
-                    ret.rsvr_sample(k)
+                if len(ret) >= self.max_mem:
+                    ret.rsvr_sample(self.k)
                 
             except StopIteration:
                 sys.stderr.write("get_time_slot(): No more files to read in the data set! Last file name %s\n"
                                  %(fpath))
                 break
         
-        if len(ret) > k:
-            ret.rsvr_sample(k)
+        if len(ret) > self.k:
+            ret.rsvr_sample(self.k)
         return ret
         
         
         
     
-    def init_statevec(self, model="SHW", **kwargs):
+    def init_statevec(self, **kwargs):
         """
         """
-        if model == "SHW":
-            return init_statevec_shw(kwargs)        
+        if self.model == "SHW":
+            self.mat_size = self.period + 1     # Set matrix dimension (# of columns == # of rows)
+            return init_statevec_shw()
         else:
             sys.stderr.write("Predictors.init_statevec(): Unrecognized prediction model %s.\n" %(model))
             return None
@@ -607,12 +623,35 @@ class Prediction:
     
     def init_statevec_shw(self, **kwargs):
         """Initialize state vector 
-        """
-        alpha = kwargs["alpha"]
-        beta  = kwargs["beta"]
-        gamma = kwargs["gamma"]
+        """        
+        b0 = KWTable()
+        l0 = KWTable()
+        s0 = [KWTable()] * self.period
+        s0_cnt = 0
         
-        pass
+        for i in range(self.period):
+            y = read_time_slot()
+            b0 -= y
+            if len(b0) >= self.max_mem:     b0 = b0.rsvr_sample(self.k) # Size down if too large
+        b0 = b0.rsvr_sample(self.k).scale_inplace(1.0/self.period**2)   # Finalize b0 
+            
+        for i in range(self.period):
+            y = read_time_slot()
+            l0 += y
+            if len(l0) >= self.max_mem:     l0 = l0.rsvr_sample(self.k) # Size down if too large
+            s0[s0_cnt]  += y
+            s0[s0_cnt]  =  s0[s0_cnt].rsvr_sample(self.k) 
+            s0_cnt      += 1
+        l0 = l0.rsvr_sample(self.k).scale_inplace(1.0/self.period)      # Finalize l0
+        
+        s0_cnt = 0
+        for i in range(self.period):
+            s0[s0_cnt] += l0
+            s0[s0_cnt] = s0[s0_cnt].rsvr_sample(self.k)
+            
+        ret = [b0, l0] + s0[:-1]
+        return ret
+            
     
     
     
