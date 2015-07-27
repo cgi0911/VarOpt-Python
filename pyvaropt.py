@@ -548,11 +548,18 @@ class Prediction:
     The u-vector is a vector of M real numbers.
     The state vector is a vector of M KWTable objects. 
     """
-    def __init__(self, model="SHW", folder=".", **kwargs):
+    SHOW_IMPLICIT_SAMPLING  = False
+    SHOW_FILE_READING       = False
+    SHOW_TIMESLOT_INIT      = True
+    SHOW_PERIOD_INIT        = True
+    SHOW_STATEVEC_INIT      = True
+
+    def __init__(self, **kwargs):
         """
         """
         # ---- Model-neutral parameters ----
-        self.folder     = folder                        # The folder of the data set.
+        self.model      = kwargs.get("model", "SHW")    # Prediction model
+        self.folder     = kwargs.get("folder", ".")     # The folder of the data set.
         self.fn_list    = sorted( [fn for fn in os.listdir(self.folder) \
                                   if os.path.isfile(os.path.join(self.folder, fn)) \
                                   and fn.split('.')[0].isdigit()] ) 
@@ -560,8 +567,8 @@ class Prediction:
                                                         # Sorted. We assume all files have simply
                                                         # timestamp as their filenames.
         self.filetype   = kwargs.get("filetype", "flowbin")     # The file type of data set
-        self.grouping   = kwargs.get("grouping", 24)    # How many files in a time slot?
-        self.period     = kwargs.get("period", 7)       # How many time slots in a period?
+        self.grouping   = kwargs.get("grouping", 1)     # How many files in a time slot?
+        self.period     = kwargs.get("period", 24)      # How many time slots in a period?
         self.mat_size   = 0                             # Number of column/rows in transition matrix.
                                                         # Value will be assigned later according to model.
         self.max_mem    = kwargs.get("max_mem", 3000000)    # Max allowed size for any aggregation used
@@ -569,7 +576,8 @@ class Prediction:
         
         # ---- Initialize the model ----
         self.fn_list_iter = iter(self.fn_list)          # Iterator for fn_list
-        self.statevec   = self.init_statevec(kwargs)
+        self.statevec   = self.init_statevec(**kwargs)
+        if Prediction.SHOW_STATEVEC_INIT:   print "State vector initialized."
         #self.matrix     = self.init_matrix(model, kwargs)
         #self.uvec       = self.init_uvec(model, kwargs)
     
@@ -586,6 +594,7 @@ class Prediction:
             try:
                 fn = self.fn_list_iter.next()
                 fpath = os.path.join(self.folder, fn)
+                if Prediction.SHOW_FILE_READING:    print "Reading %s" %(fpath)
                 if self.filetype == "flowbin":
                     ret.read_from_flowbin(fpath)
                 elif self.filetype == "flowtxt":
@@ -594,7 +603,9 @@ class Prediction:
                     sys.stderr.write("Predictors.get_time_slot(): Unrecognized file type %s.\n"
                                      %(self.filetype))            
                 if len(ret) >= self.max_mem:
-                    ret.rsvr_sample(self.k)
+                    if Prediction.SHOW_IMPLICIT_SAMPLING:
+                        print "Current size = %d. Sample down to %d" %(len(ret), self.k)
+                    ret = ret.rsvr_sample(self.k)
                 
             except StopIteration:
                 sys.stderr.write("get_time_slot(): No more files to read in the data set! Last file name %s\n"
@@ -613,7 +624,7 @@ class Prediction:
         """
         if self.model == "SHW":
             self.mat_size = self.period + 1     # Set matrix dimension (# of columns == # of rows)
-            return init_statevec_shw(kwargs)
+            return self.init_statevec_shw(**kwargs)
         else:
             sys.stderr.write("Predictors.init_statevec(): Unrecognized prediction model %s.\n" %(model))
             return None
@@ -630,12 +641,15 @@ class Prediction:
         s0_cnt = 0
         
         for i in range(self.period):
-            y = read_time_slot()
+            if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(i)
+            y = self.read_time_slot()
             b0 -= y
             if len(b0) >= self.max_mem:     b0 = b0.rsvr_sample(self.k) # Size down if too large
-        b0 = b0.rsvr_sample(self.k).scale_inplace(1.0/self.period**2)   # Finalize b0 
+        b0 = b0.rsvr_sample(self.k).scale_inplace(1.0/self.period**2)   # Finalize b0
+        if Prediction.SHOW_PERIOD_INIT:     print "Have read a period."
             
         for i in range(self.period):
+            if Prediction.SHOW_TIMESLOT_INIT:  print "Reading time slot #%d" %(i)
             y = read_time_slot()
             l0 += y
             if len(l0) >= self.max_mem:     l0 = l0.rsvr_sample(self.k) # Size down if too large
@@ -643,6 +657,7 @@ class Prediction:
             s0[s0_cnt]  =  s0[s0_cnt].rsvr_sample(self.k) 
             s0_cnt      += 1
         l0 = l0.rsvr_sample(self.k).scale_inplace(1.0/self.period)      # Finalize l0
+        if Prediction.SHOW_PERIOD_INIT:     print "Have read a period."
         
         s0_cnt = 0
         for i in range(self.period):
