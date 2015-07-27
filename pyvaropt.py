@@ -588,7 +588,6 @@ class Prediction:
     
     def read_time_slot(self):
         """
-        k:        Reservoir sample size
         max_mem:  Maximum memory size (# entries) allowed during aggregation.
         """
         ret = KWTable()
@@ -607,15 +606,15 @@ class Prediction:
                 if len(ret) >= self.max_mem:
                     if Prediction.SHOW_IMPLICIT_SAMPLING:
                         print "Current size = %d. Sample down to %d" %(len(ret), self.k)
-                    ret = ret.rsvr_sample(self.k)
+                    ret = ret.rsvr_sample(self.max_mem)
                 
             except StopIteration:
                 sys.stderr.write("get_time_slot(): No more files to read in the data set! Last file name %s\n"
                                  %(fpath))
                 break
         
-        if len(ret) > self.k:
-            ret.rsvr_sample(self.k)
+        #if len(ret) > self.k:
+        #    ret.rsvr_sample(self.k)
         return ret
         
         
@@ -663,7 +662,7 @@ class Prediction:
         
         s0_cnt = 0
         for i in range(self.period):
-            s0[s0_cnt] += l0
+            s0[s0_cnt] -= l0
             s0[s0_cnt] = s0[s0_cnt].rsvr_sample(self.k)
             
         ret = [b0, l0] + s0[:-1]
