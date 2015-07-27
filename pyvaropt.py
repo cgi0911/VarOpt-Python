@@ -613,7 +613,7 @@ class Prediction:
         """
         if self.model == "SHW":
             self.mat_size = self.period + 1     # Set matrix dimension (# of columns == # of rows)
-            return init_statevec_shw()
+            return init_statevec_shw(kwargs)
         else:
             sys.stderr.write("Predictors.init_statevec(): Unrecognized prediction model %s.\n" %(model))
             return None
