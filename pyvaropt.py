@@ -582,9 +582,8 @@ class Prediction:
         self.tstamp_list_iter = iter(self.tstamp_list)  # Iterator for tstamp_list
         
         # ---- Initialize the model ----
-        self.t_mat      = self.init_tmat(model, kwargs)   # Transition matrix
-        #self.uvec       = self.init_uvec(model, kwargs)
-        self.statevec   = self.init_statevec(**kwargs)
+        self.t_mat, self.uvec      = self.init_matrices()(model, kwargs)   # Transition matrix
+        #self.statevec   = self.init_statevec(**kwargs)
         if Prediction.SHOW_STATEVEC_INIT:   print "State vector initialized."
         
     
@@ -675,48 +674,35 @@ class Prediction:
             
         ret = [b0, l0] + s0[:-1]
         return ret
-            
     
     
+
     
-    def init_uvec(self, model="SHW", **kwargs):
+    def init_matrices(self, **kwargs):
         """
         """
-        if model == "SHW":
-            return init_uvec_shw(kwargs)
+        if self.model == "SHW":
+            return self.init_matrices_shw(**kwargs)
         else:
             sys.stderr.write("Unrecognized prediction model %s.\n" %(model))
             return None
     
     
     
-    def init_uvec_shw(self):
+    
+    def init_matrices_shw(self, **kwargs):
         """
         """
-        pass
-    
-    
-    
-    
-    def init_tmat(self, **kwargs):
-        """
-        """
-        if self.model == "SHW":
-            return self.init_tmat_shw(**kwargs)
-        
-    
-    
-    def init_tmat_shw(self, **kwargs):
-        """
-        """
+        # Common initialization
         self.mat_size = self.period+1
-        ret = np.zeros((self.mat_size))
+        ret = np.zeros((self.mat_size, self.mat_size))
+        
         
         self.alpha  = kwargs.get("alpha", 0.2)
         self.beta   = kwargs.get("beta", 0.2)
-        self.gamma  = kwargs.get("gamma", 0.2)
-        self.matrix = init_trans_matrix_shw(alpha, beta, gamma)
+        self.gamma  = kwargs.get("gamma", 0.2)     
         
+        # Make transition matrix
         ret[0][0] = 1.0 - self.alpha
         ret[0][1] = 1.0 - self.alpha
         ret[0][2] = -1.0 * self.alpha
@@ -737,7 +723,13 @@ class Prediction:
         for i in range(self.period - 2):
             ret[self.period][3+i] = -1.0
             
-        return ret    
+        # Make u-vector
+        ret2 = np.array([-1.0 * self.gamma / self.period] * self.mat_size)
+        ret2[0] = self.alpha
+        ret2[1] = self.beta
+        
+        # Return
+        return ret, ret2
     
     
     
