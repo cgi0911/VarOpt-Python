@@ -25,7 +25,7 @@ class KWTable:
     # ---- Class initializations, variables and parameters ----
     id_counter = 0
     SHOW_DESTRUCTION = False
-    SHOW_RSVR_SAMPLE = True
+    SHOW_RSVR_SAMPLE = False
     rd.seed( int(time.time()) )
 
     def __init__(self, **kwargs):
@@ -649,20 +649,22 @@ class Prediction:
             y = self.read_time_slot()
             if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(self.curr_time)
             b0 -= y
-            if len(b0) >= self.max_mem:     b0 = b0.rsvr_sample(self.k) # Size down if too large
-        b0 = b0.rsvr_sample(self.k).scale_inplace(1.0/self.period**2)   # Finalize b0
+            if len(b0) >= self.max_mem:     b0 = b0.rsvr_sample(self.k)     # Size down if too large
+        b0 = b0.rsvr_sample(self.k)
+        b0.scale_inplace(1.0/self.period**2)   # Finalize b0
         
         # Second training period
         if Prediction.SHOW_PERIOD_INIT:         print "Have read a period."            
         for i in range(self.period):
-            if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(i)
-            y = read_time_slot()
+            y = self.read_time_slot()
+            if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(self.curr_time)
             l0 += y
-            if len(l0) >= self.max_mem:     l0 = l0.rsvr_sample(self.k) # Size down if too large
+            if len(l0) >= self.max_mem:     l0 = l0.rsvr_sample(self.k)     #Size down if too large
             s0[s0_cnt]  += y
-            s0[s0_cnt]  =  s0[s0_cnt].rsvr_sample(self.k) 
+            if len(s0[s0_cnt]) >= self.max_mem:     s0[s0_cnt]  =  s0[s0_cnt].rsvr_sample(self.k) 
             s0_cnt      += 1
-        l0 = l0.rsvr_sample(self.k).scale_inplace(1.0/self.period)      # Finalize l0
+        l0 = l0.rsvr_sample(self.k)
+        l0.scale_inplace(1.0/self.period)      # Finalize l0
         if Prediction.SHOW_PERIOD_INIT:     print "Have read a period."
         
         s0_cnt = 0

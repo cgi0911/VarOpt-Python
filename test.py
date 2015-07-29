@@ -19,13 +19,13 @@ pp = pprint.PrettyPrinter(indent=2)
 def mainfunc():
     """
     """
-    myPredict = pvo.Prediction(folder=args.fn1, k=300000)
-    print myPredict.folder
-    print myPredict.fn_list
+    myPredict = pvo.Prediction(folder=args.fn1, k=30000, grouping=1, period=4)
+    return myPredict
 
 
 
 
 if __name__ == "__main__":
-    #pvo.KWTable.SHOW_DESTRUCTION = True
-    mainfunc()
+    st = time.time()
+    myPredict = mainfunc()
+    print time.time() - st
