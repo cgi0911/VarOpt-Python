@@ -582,7 +582,7 @@ class Prediction:
         self.tstamp_list_iter = iter(self.tstamp_list)  # Iterator for tstamp_list
         
         # ---- Initialize the model ----
-        self.t_mat, self.uvec      = self.init_matrices()(model, kwargs)   # Transition matrix
+        self.t_mat, self.u_vec      = self.init_matrices(**kwargs)   # Transition matrix
         #self.statevec   = self.init_statevec(**kwargs)
         if Prediction.SHOW_STATEVEC_INIT:   print "State vector initialized."
         
