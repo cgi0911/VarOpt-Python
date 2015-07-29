@@ -646,8 +646,8 @@ class Prediction:
         
         # First training period: b0 = b0 - y for each time slot
         for i in range(self.period):
-            if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(i)
             y = self.read_time_slot()
+            if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(self.curr_time)
             b0 -= y
             if len(b0) >= self.max_mem:     b0 = b0.rsvr_sample(self.k) # Size down if too large
         b0 = b0.rsvr_sample(self.k).scale_inplace(1.0/self.period**2)   # Finalize b0
