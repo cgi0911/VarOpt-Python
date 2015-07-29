@@ -565,12 +565,15 @@ class Prediction:
         self.fn_list    = sorted( [fn for fn in os.listdir(self.folder) \
                                   if os.path.isfile(os.path.join(self.folder, fn)) \
                                   and fn.split('.')[0].isdigit()] ) 
-                                                        # Get the list of flow record data files
+                                                        # Get the ordered list of flow record data files
                                                         # Sorted. We assume all files have simply
                                                         # timestamp as their filenames.
+        self.tstamp_list= [int(fn.split('.')[0]) for fn in self.fn_list] # Integer timestamps, ordered
         self.filetype   = kwargs.get("filetype", "flowbin")     # The file type of data set
         self.grouping   = kwargs.get("grouping", 1)     # How many files in a time slot?
         self.period     = kwargs.get("period", 24)      # How many time slots in a period?
+        self.interval   = (self.tstamp_list[1] - self.tstamp_list[0]) * grouping * period   # Time interval of a period
+        self.curr_time  = 0                             # Current timestamp
         self.mat_size   = 0                             # Number of column/rows in transition matrix.
                                                         # Value will be assigned later according to model.
         self.max_mem    = kwargs.get("max_mem", 3000000)    # Max allowed size for any aggregation used
@@ -578,6 +581,7 @@ class Prediction:
         
         # ---- Initialize the model ----
         self.fn_list_iter = iter(self.fn_list)          # Iterator for fn_list
+        self.tstamp_list_iter = iter(self.tstamp_list)  # Iterator for tstamp_list
         self.statevec   = self.init_statevec(**kwargs)
         if Prediction.SHOW_STATEVEC_INIT:   print "State vector initialized."
         #self.matrix     = self.init_matrix(model, kwargs)
@@ -594,6 +598,7 @@ class Prediction:
         for i in range(self.grouping):
             try:
                 fn = self.fn_list_iter.next()
+                self.curr_time = self.tstamp_list_iter.next()
                 fpath = os.path.join(self.folder, fn)
                 if Prediction.SHOW_FILE_READING:    print "Reading %s" %(fpath)
                 if self.filetype == "flowbin":
@@ -605,7 +610,7 @@ class Prediction:
                                      %(self.filetype))            
                 if len(ret) >= self.max_mem:
                     if Prediction.SHOW_IMPLICIT_SAMPLING:
-                        print "Current size = %d. Sample down to %d" %(len(ret), self.k)
+                        print "Current size = %d > %d. Sample down to %d" %(len(ret), self.max_mem, self.k)
                     ret = ret.rsvr_sample(self.max_mem)
                 
             except StopIteration:
@@ -613,8 +618,6 @@ class Prediction:
                                  %(fpath))
                 break
         
-        #if len(ret) > self.k:
-        #    ret.rsvr_sample(self.k)
         return ret
         
         
@@ -641,16 +644,18 @@ class Prediction:
         s0 = [KWTable()] * self.period
         s0_cnt = 0
         
+        # First training period: b0 = b0 - y for each time slot
         for i in range(self.period):
             if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(i)
             y = self.read_time_slot()
             b0 -= y
             if len(b0) >= self.max_mem:     b0 = b0.rsvr_sample(self.k) # Size down if too large
         b0 = b0.rsvr_sample(self.k).scale_inplace(1.0/self.period**2)   # Finalize b0
-        if Prediction.SHOW_PERIOD_INIT:     print "Have read a period."
-            
+        
+        # Second training period
+        if Prediction.SHOW_PERIOD_INIT:         print "Have read a period."            
         for i in range(self.period):
-            if Prediction.SHOW_TIMESLOT_INIT:  print "Reading time slot #%d" %(i)
+            if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(i)
             y = read_time_slot()
             l0 += y
             if len(l0) >= self.max_mem:     l0 = l0.rsvr_sample(self.k) # Size down if too large
