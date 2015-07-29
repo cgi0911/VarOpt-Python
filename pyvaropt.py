@@ -572,7 +572,7 @@ class Prediction:
         self.filetype   = kwargs.get("filetype", "flowbin")     # The file type of data set
         self.grouping   = kwargs.get("grouping", 1)     # How many files in a time slot?
         self.period     = kwargs.get("period", 24)      # How many time slots in a period?
-        self.interval   = (self.tstamp_list[1] - self.tstamp_list[0]) * grouping * period   # Time interval of a period
+        self.interval   = (self.tstamp_list[1] - self.tstamp_list[0]) * self.grouping * self.period   # Time interval of a period
         self.curr_time  = 0                             # Current timestamp
         self.mat_size   = 0                             # Number of column/rows in transition matrix.
                                                         # Value will be assigned later according to model.
