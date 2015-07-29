@@ -577,15 +577,16 @@ class Prediction:
         self.mat_size   = 0                             # Number of column/rows in transition matrix.
                                                         # Value will be assigned later according to model.
         self.max_mem    = kwargs.get("max_mem", 3000000)    # Max allowed size for any aggregation used
-        self.k          = kwargs["k"]
-        
-        # ---- Initialize the model ----
+        self.k          = kwargs["k"]        
         self.fn_list_iter = iter(self.fn_list)          # Iterator for fn_list
         self.tstamp_list_iter = iter(self.tstamp_list)  # Iterator for tstamp_list
+        
+        # ---- Initialize the model ----
+        self.t_mat      = self.init_tmat(model, kwargs)   # Transition matrix
+        #self.uvec       = self.init_uvec(model, kwargs)
         self.statevec   = self.init_statevec(**kwargs)
         if Prediction.SHOW_STATEVEC_INIT:   print "State vector initialized."
-        #self.matrix     = self.init_matrix(model, kwargs)
-        #self.uvec       = self.init_uvec(model, kwargs)
+        
     
     
     
@@ -697,22 +698,46 @@ class Prediction:
     
     
     
-    def init_matrix(self, model="SHW", **kwargs):
+    def init_tmat(self, **kwargs):
         """
         """
-        if model == "SHW":
-            alpha = kwargs["alpha"]
-            beta  = kwargs["beta"]
-            gamma = kwargs["gamma"]
-            self.matrix = init_trans_matrix_shw(alpha, beta, gamma) 
-        pass
+        if self.model == "SHW":
+            return self.init_tmat_shw(**kwargs)
+        
     
     
-    
-    
-    def init_trans_matrix_shw(self, alpha, beta, gamma):
-        ret = np.zeros()
-        pass
+    def init_tmat_shw(self, **kwargs):
+        """
+        """
+        self.mat_size = self.period+1
+        ret = np.zeros((self.mat_size))
+        
+        self.alpha  = kwargs.get("alpha", 0.2)
+        self.beta   = kwargs.get("beta", 0.2)
+        self.gamma  = kwargs.get("gamma", 0.2)
+        self.matrix = init_trans_matrix_shw(alpha, beta, gamma)
+        
+        ret[0][0] = 1.0 - self.alpha
+        ret[0][1] = 1.0 - self.alpha
+        ret[0][2] = -1.0 * self.alpha
+        
+        ret[1][0] = -1.0 * self.beta
+        ret[1][1] = 1.0 - self.beta
+        ret[1][2] = -1.0 * self.beta
+        
+        for i in range(self.period - 2):
+            ret[2+i][0] = self.gamma / self.period 
+            ret[2+i][1] = self.gamma / self.period
+            ret[2+i][2] = self.gamma / self.period
+            ret[2+i][3+i] = 1.0
+        
+        ret[self.period][0] = self.gamma / self.period  
+        ret[self.period][1] = self.gamma / self.period
+        ret[self.period][2] = self.gamma / self.period - 1.0
+        for i in range(self.period - 2):
+            ret[self.period][3+i] = -1.0
+            
+        return ret    
     
     
     
