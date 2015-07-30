@@ -751,27 +751,19 @@ class Prediction:
     
     
     
-    def _vec_mul((self, j)):
-        """Vector multiplication.
-        It takes two inputs: An iterable array (row) of float elements, and the state vector.
-        It is the compositional operation of transition.
+    def _row_operation(self, row, u, state_vec, y):
+        """
         """
         ret = KWTable()
-        row = self.t_mat[j]
-        if len(row) != self.mat_size or len(self.state_vec) != self.mat_size:
-            print "Row and state_vec have different lengths!"
-            return None
-        
-        for i in range(len(row)):
+        for i in range(self.mat_size):
             if row[i] == 0.0:   continue
             else:
-                ret.aggr(self.state_vec[i], 1.0, row[i])
+                ret.aggr_inplace(state_vec[i], 1.0, row[i])
                 if len(ret) >= self.max_mem:    ret = ret.rsvr_sample(self.k)
-                                                # Sample if oversized
         
-        if self.u_vec[j] != 0.0:    ret.aggr_inplace(self.state_vec[j], 1.0, self.u_vec[j])
+        if u != 0.0:    ret.aggr_inplace(y, 1.0, u)
         ret = ret.rsvr_sample(self.k)
-        return ret
+        return ret 
     
     
     
@@ -779,16 +771,24 @@ class Prediction:
     def transition(self):
         """
         """
-        pool = mp.Pool(Prediction.N_WORKERS)
-        new_state_vec = pool.map(self._vec_mul, range(self.mat_size))
+        y = self.read_time_slot()
+        mypool = mp.Pool(Prediction.N_WORKERS)
+        data_seq = [[self.t_mat[i], self.u_vec[i], self.state_vec, y] for i in range(self.mat_size)]
+        new_state_vec = mypool.map(self._row_operation(), data_seq)
 
     
     
     
-    def predict(self):
+    def forecast(self, n_step):
         """
         """
-        pass
+        one_pos = 1 + (n_step % self.period)
+        ret = KWTable()
+        ret += self.state_vec[0]
+        ret.aggr_inplace(self.state_vec[1], 1.0, float(n_step))
+        ret += self.state_vec[one_pos]
+        return ret
+
     
     
     

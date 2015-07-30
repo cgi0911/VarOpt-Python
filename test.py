@@ -28,6 +28,4 @@ def mainfunc():
 if __name__ == "__main__":
     st = time.time()
     myPredict = mainfunc()
-    print time.time() - st
-    print myPredict.t_mat
-    print myPredict.u_vec
+    print time.time() - st 
