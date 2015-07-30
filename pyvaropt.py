@@ -769,8 +769,7 @@ class Prediction:
                 if len(ret) >= self.max_mem:    ret = ret.rsvr_sample(self.k)
                                                 # Sample if oversized
         
-        if self.u_vec[j] != 0.0:
-                    
+        if self.u_vec[j] != 0.0:    ret.aggr_inplace(self.state_vec[j], 1.0, self.u_vec[j])
         ret = ret.rsvr_sample(self.k)
         return ret
     
@@ -782,12 +781,14 @@ class Prediction:
         """
         pool = mp.Pool(Prediction.N_WORKERS)
         new_state_vec = pool.map(self._vec_mul, range(self.mat_size))
-        
-        
-        
-        
-        pass
+
     
+    
+    
+    def predict(self):
+        """
+        """
+        pass
     
     
     
