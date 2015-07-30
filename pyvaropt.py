@@ -7,6 +7,7 @@ import netaddr as na
 import collections as cl
 import random as rd
 import numpy as np
+import multiprocessing as mp
 import heapq
 import math
 import copy
@@ -299,6 +300,21 @@ class KWTable:
 
 
 
+
+    def aggr_inplace(self, rhs=None, lcoeff=1.0, rcoeff=1.0):
+        """
+        """
+        if rhs != None:
+            for key, wt in rhs.table.iteritems():
+                if not key in self.table:
+                    self.table[key] = rcoeff * wt
+                else:
+                    self.table[key] += rcoeff * wt
+                    if self.table[key] == 0.0:   del self.table[key]  # Delete the zero item.
+        
+        
+        
+        
     #@profile
     def rsvr_sample(self, k):
         """Use reservoir sampling to draw a k-entry sample out of the original KWTable.
@@ -555,6 +571,7 @@ class Prediction:
     SHOW_TIMESLOT_INIT      = True
     SHOW_PERIOD_INIT        = True
     SHOW_STATEVEC_INIT      = True
+    N_WORKERS               = 4
 
     def __init__(self, **kwargs):
         """
@@ -734,7 +751,41 @@ class Prediction:
     
     
     
+    def _vec_mul((self, j)):
+        """Vector multiplication.
+        It takes two inputs: An iterable array (row) of float elements, and the state vector.
+        It is the compositional operation of transition.
+        """
+        ret = KWTable()
+        row = self.t_mat[j]
+        if len(row) != self.mat_size or len(self.state_vec) != self.mat_size:
+            print "Row and state_vec have different lengths!"
+            return None
+        
+        for i in range(len(row)):
+            if row[i] == 0.0:   continue
+            else:
+                ret.aggr(self.state_vec[i], 1.0, row[i])
+                if len(ret) >= self.max_mem:    ret = ret.rsvr_sample(self.k)
+                                                # Sample if oversized
+        
+        if self.u_vec[j] != 0.0:
+                    
+        ret = ret.rsvr_sample(self.k)
+        return ret
+    
+    
+    
+    
     def transition(self):
+        """
+        """
+        pool = mp.Pool(Prediction.N_WORKERS)
+        new_state_vec = pool.map(self._vec_mul, range(self.mat_size))
+        
+        
+        
+        
         pass
     
     
