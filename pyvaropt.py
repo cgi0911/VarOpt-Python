@@ -751,17 +751,20 @@ class Prediction:
     
     
     
-    def _row_operation(self, row, u, state_vec, y):
+    def _row_operation(self, j):
         """
         """
+        row = self.t_mat[j]
+        u   = self.u_vec[j]
         ret = KWTable()
+
         for i in range(self.mat_size):
             if row[i] == 0.0:   continue
             else:
-                ret.aggr_inplace(state_vec[i], 1.0, row[i])
+                ret.aggr_inplace(self.state_vec[i], 1.0, row[i])
                 if len(ret) >= self.max_mem:    ret = ret.rsvr_sample(self.k)
         
-        if u != 0.0:    ret.aggr_inplace(y, 1.0, u)
+        if u != 0.0:    ret.aggr_inplace(self.y, 1.0, u)
         ret = ret.rsvr_sample(self.k)
         return ret 
     
@@ -771,12 +774,12 @@ class Prediction:
     def transition(self):
         """
         """
-        y = self.read_time_slot()
+        self.y = self.read_time_slot()
         mypool = mp.Pool(Prediction.N_WORKERS)
-        data_seq = [[self.t_mat[i], self.u_vec[i], self.state_vec, y] for i in range(self.mat_size)]
-        new_state_vec = mypool.map(self._row_operation(), data_seq)
+        new_state_vec = mypool.map(self._row_operation, range(self.mat_size))
+        self.state_vec = new_state_vec
+   
 
-    
     
     
     def forecast(self, n_step):

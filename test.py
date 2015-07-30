@@ -28,4 +28,5 @@ def mainfunc():
 if __name__ == "__main__":
     st = time.time()
     myPredict = mainfunc()
-    print time.time() - st 
+    print time.time() - st
+    myPredict.transition()
