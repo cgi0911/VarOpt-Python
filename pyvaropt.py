@@ -600,7 +600,7 @@ class Prediction:
         
         # ---- Initialize the model ----
         self.t_mat, self.u_vec      = self.init_matrices(**kwargs)   # Transition matrix
-        #self.statevec   = self.init_statevec(**kwargs)
+        self.statevec   = self.init_statevec(**kwargs)
         if Prediction.SHOW_STATEVEC_INIT:   print "State vector initialized."
         
     
