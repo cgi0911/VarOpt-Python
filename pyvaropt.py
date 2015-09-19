@@ -472,32 +472,44 @@ class PrefixQueryTable:
 
     def from_txt_file(self, fn):
         """Parse a text file into prefix query table. Each row is in the format:
-        <IP segment in CIDR expression> <src or dst>
+        <s or d>,<IP segment in CIDR expression>,<default value>
         An example:
-        123.45.67.0/24 src
+        s,123.45.67.0/24,1000.0
 
         This function can be repeatedly call to add entries from various files.
         All entries in the table shall be unique.
         """
         inFile = open(fn, "r")
         for line in inFile:
-            fields = line.rstrip().split(' ')           # Parse the line
-            ip_str          = fields[0]
-            try: src_dst    = fields[1]
-            except: src_dst = "src"
-            ip_nw           = na.IPNetwork(ip_str)      # IP network in netaddr format
-            ip_prefixlen    = ip_nw.prefixlen           # Prefix length
-            ip              = ip_nw.cidr.ip             # CIDR IP in netaddr format
-            ip_int          = int(ip)                   # CIDR IP in integer
-            if src_dst == "dst":    src_dst = "dst"
-            else:                   src_dst = "src"     # Each row defines a source IP segment
-                                                        # unless explicitly specified as dst.
+            fields = line.rstrip().split(',')           # Parse the line
+            try:
+                src_dst     = "d" if fields[0] == "d" else "s"  # src_dst default to s
+            except:
+                src_dst     = "s"
+            
+            try:        
+                ip_str          = fields[1]
+                ip_nw           = na.IPNetwork(ip_str)      # IP network in netaddr format
+                ip_prefixlen    = ip_nw.prefixlen           # Prefix length
+                ip              = ip_nw.cidr.ip             # CIDR IP in netaddr format
+                ip_int          = int(ip)                   # CIDR IP in integer
+            except:                                         # Cannot convert the string into IP network
+                print "Failed to parse into IP network expression!"
+                ip_prefixlen    = 0
+                ip_int          = 0
+
+            try:
+                wt              = fields[2]
+            except:
+                wt              = 0.0                       # default to 0.0
 
             #Add key to self.table and corresponding check item to self.checkdict
             key = (ip_int, ip_prefixlen, src_dst)       # Key is a tuple of (ip in iteger, prefix length, src/dst string)
-            if key in self.table:               continue                    # Already existing item. Skip processing. Keep counter value.
+
+            if key in self.table:               self.table[key] += 0.0      # Already existing item. Skip processing. Keep counter value.
             else:                               self.table[key] = 0.0       # New item. Add an entry. Counter set to 0.0.
-            checkitem = (src_dst, ip_prefixlen)
+
+            checkitem = (src_dst, ip_prefixlen)     # A combination of src_dst and prefix length
             if checkitem in self.checkdict:     self.checkdict[checkitem] += 1  # Already existing item.
             else:                               self.checkdict[checkitem] = 1   # New item. Add an entry. Counter set to 1.
 
@@ -517,24 +529,45 @@ class PrefixQueryTable:
 
 
 
-    def __add__(lhs, rhs):
-        ret = copy.copy(lhs)        # Shallow copy
-        for key in rhs.table:
-            if key in ret.table:    # Overlapping items
-                ret.table[key] += rhs.table[key]    # Add up the counter values
-                continue
-            else:
-                ret.table[key] = rhs.table[key]
-                checkitem = PrefixQueryTable._get_checkitem_from_key(key)
-                if checkitem in ret.checkdict:  ret.checkdict[checkitem] += 1
-                else:                           ret.checkdict[checkitem] = 1
+    def __repr__(self):
+        ret = ""
+        for key in self.table:
+            ip_nw = na.IPNetwork(na.IPAddress(key[0]))
+            ip_nw.prefixlen = key[1]
+            ip_nw = ip_nw.cidr                          # Remove redundant bits
+            src_dst = key[2]
+            ret += "%-4s %-20s %-.10f\n" %(src_dst, str(ip_nw), self.table[key])
+        return ret
+
+
+
+    def wtsum(self, rhs, lcoeff, rcoeff):
+        """ The two prefix query tables must have identical key sets!
+        """
+        if not self.table.keys() == rhs.table.keys() or not self.checkdict.keys() == rhs.checkdict.keys():
+            print "Cannot do weighted sum on two prefix query tables. Not perfectly aligned."
+            return None
+
+        ret = PrefixQueryTable()
+        for key in self.table:      ret.table[key] = self.table[key] * lcoeff + rhs.table[key] * rcoeff
+        for key in self.checkdict:  ret.checkdict[key] = self.checkdict[key]
+
+        return ret
 
 
 
 
-    @classmethod
-    def _get_checkitem_from_key(cls, key):
-        return (key[2], key[1])
+    def to_txt(self, fn):
+        """
+        """
+        myFile = open(fn, "w")
+        for k in self.table:
+            ip_nw = na.IPNetwork(na.IPAddress(k[0]))
+            ip_nw.prefixlen = k[1]
+            ip_nw = ip_nw.cidr                          # Remove redundant bits
+            src_dst = k[2]
+            myFile.write("%s,%s,%.10f\n" %(src_dst, str(ip_nw), self.table[k]))
+        myFile.close()
 
 
 
@@ -545,7 +578,8 @@ class PrefixQueryTable:
             ip_nw = na.IPNetwork(na.IPAddress(k[0]))
             ip_nw.prefixlen = k[1]
             ip_nw = ip_nw.cidr                          # Remove redundant bits
-            ret.append((str(ip_nw), self.table[k]))     # Convert to string
+            src_dst = k[2]
+            ret.append((src_dst, str(ip_nw), self.table[k]))     # Convert to string
         return ret
 
 
@@ -557,7 +591,8 @@ class PrefixQueryTable:
             ip_nw = na.IPNetwork(na.IPAddress(k[0]))
             ip_nw.prefixlen = k[1]
             ip_nw = ip_nw.cidr                          # Remove redundant bits
-            ret.append(str(ip_nw))                      # Convert to string
+            src_dst = k[2]
+            ret.append(str(ip_nw) + ' ' + src_dst)                      # Convert to string
         return ret
 
 
