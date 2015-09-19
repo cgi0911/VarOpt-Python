@@ -6,13 +6,14 @@ import pyvaropt as pv
 
 if __name__ == "__main__":
     tot_size = 0
-    fns = sorted(os.listdir("/home/users/cgi0911/Data/Waikato_5/hourly_flowbin"))
+    fns = sorted(os.listdir("/home/cgi0911/sg3000/Waikato_V_traces/hourly_flowbin/"))
+    #fns = sorted(os.listdir("/home/users/cgi0911/Data/Waikato_5/hourly_flowbin"))
     tables = []
 
     st = time.time()
     for i in range (20):
-        # "/home/cgi0911/sg3000/Waikato_V_traces/hourly_flowbin/" for phenom1
-        t = pv.KWTable(filetype="flowbin", fn="/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/" + fns[i])
+        t = pv.KWTable(filetype="flowbin", fn="/home/cgi0911/sg3000/Waikato_V_traces/hourly_flowbin/" + fns[i])
+        #t = pv.KWTable(filetype="flowbin", fn="/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/" + fns[i])
         tables.append(t)
         tot_size += len(t)
 
