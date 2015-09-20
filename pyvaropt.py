@@ -88,7 +88,7 @@ class KWTable:
         """Destructor of the KWTable class.
         """
         if KWTable.SHOW_DESTRUCTION == True:
-            print "Deconstructing KWTable #%d at address: %s" %(self.tid, hex(id(self)))
+            print "Destroy KWTable(%x)" %(id(self))
 
 
 
