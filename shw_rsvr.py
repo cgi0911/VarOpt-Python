@@ -11,9 +11,9 @@ DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/hourly_flowbin/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 60    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 15    # Ending timestamp
 FILETYPE = "flowbin"
-PERIOD   = 24   # # of time slots in a period
+PERIOD   = 5    # # of time slots in a period
 R        = 1    # Forecast # of steps
 ALPHA    = 0.2
 BETA     = 0.2
@@ -89,38 +89,39 @@ def forecast(r):
 
 
 
-def worker_samp(i): # Worker function of sampling
-    # Working on x_vec[i] as assigned by parent
-    st_time = time.time()
-    print "Worker is working on x_vec[%d]: KWTable(%-12x). Current size = %d" %(i, id(x_vec[i]), len(x_vec[i])),
-    ret = x_vec[i].rsvr_sample(RSVR_SIZE, in_place=False)
-        # To do multiprocessing, I have no choice but turn off in_place option. But I still get large speedup.
-    el_time = time.time() - st_time
-    print "   Sampled size = %d    Elapsed time = %f" %(len(ret), el_time)
-    return ret
+def worker_samp(wkid, task_queue, res_dict):
+    while True:
+        st_time = time.time()
+        i = task_queue.get()
+        if i == -1:     break       # Break when stop token received
+        print "Worker #%d is working on x_vec[%d]: KWTable(%-12x). Current size = %d" %(wkid, i, id(x_vec[i]), len(x_vec[i])),
+        res = x_vec[i].rsvr_sample(RSVR_SIZE, in_place=False)
+        el_time = time.time() - st_time
+        print "   Sampled size = %d    Elapsed time = %f" %(len(res), el_time)
+        res_dict[i] = res
+    return
 
 
 
 
-def worker_row(i):   # Worker function of row operation in transition
-    # Working on row #i as assigned by parent
-    st_time = time.time()
-    print "Worker is working on transition: row #%d." %(i),
-    ret = pv.KWTable()
-    row_vec = m_mat[i]
-    u       = u_vec[i]
-
-    for j in range(len(row_vec)):               # Vector multiplication
-        ret.aggr_inplace(x_vec[j], 1.0, row_vec[j])
-    ret.aggr_inplace(y, 1.0, u)                 # Add the observation
-    ori_size = len(ret)
-    ret = ret.rsvr_sample(RSVR_SIZE, in_place=False)   # Sample tht return
-    print "   Size = %d -> %d" %(ori_size, len(ret)),
-    el_time = time.time() - st_time
-    print "   Elapsed time = %f" %(el_time)
-    return ret
-
-
+def worker_row(wkid, task_queue, res_dict):
+    while True:
+        st_time = time.time()
+        i = task_queue.get()
+        if i == -1:     break       # Break when stop token received
+        print "Worker #%d is working on transition of row #%d." %(wkid, i),
+        res = pv.KWTable()
+        row_vec = m_mat[i]
+        u       = u_vec[i]
+        for j in range(len(row_vec)):   res.aggr_inplace(x_vec[j], 1.0, row_vec[j])
+        res.aggr_inplace(y, 1.0, u)
+        ori_size = len(res)
+        res = res.rsvr_sample(RSVR_SIZE, in_place=False)
+        print "   Size = %d -> %d" %(ori_size, len(res)),
+        el_time = time.time() - st_time
+        print "   Elapsed time = %f" %(el_time)
+        res_dict[i] = res
+    return
 
 
 if __name__ == "__main__":
@@ -145,6 +146,7 @@ if __name__ == "__main__":
     # (2) b0 = \sum\limits_{i=0}^{w-1} (Y_{-i} - Y_{-W-i}) / W^2
     # (3) S_{0,i} = Y_{i-W} - l0
 
+
     # ---------- First training period ----------
     print "---------- Initialization: First training period ----------"
     TS_CURR = TS_START
@@ -156,7 +158,8 @@ if __name__ == "__main__":
         TS_CURR += INTERVAL
         el_time = time.time() - st_time
         print "   Elapsed time =", el_time
-        
+
+
     # ---------- Second training period ----------
     print
     print "---------- Initialization: Second training period ----------"
@@ -181,24 +184,34 @@ if __name__ == "__main__":
         print "s0_list[%d] -= l0" %(i),
         el_time = time.time() - st_time
         print "   Elapsed time =", el_time
- 
+
+
     # ---------- Form state vector ----------
     print
     print "--------- Form initial state vector and sample each element ----------"
-
     x_vec = [l0, b0] + s0_list[1:]
+
 
     # ---------- Sample each element ----------
     for i in range(len(x_vec)):
         print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
 
-    wk_pool = mp.Pool(N_WORKERS)
-    new_x_vec = wk_pool.map(worker_samp, range(len(x_vec)))
-                                                    # Here we do not pass x_vec directly
-                                                    # as it will invoke unnecissary 
-                                                    # copy operations. Instead, we treat
-                                                    # x_vec as global.
-    x_vec = new_x_vec   # Since we use not-in-place rsvr_sample, we have to update x_vec
+    task_queue = mp.Queue()
+    res_dict = mp.Manager().dict()
+    wk_pool = []
+    
+    for i in range(len(x_vec)):     task_queue.put(i)
+    for i in range(N_WORKERS):      task_queue.put(-1)
+
+    for i in range(N_WORKERS):
+        p = mp.Process(target=worker_samp, args=(i, task_queue, res_dict))
+        wk_pool.append(p)
+        p.start()
+
+    for p in wk_pool:               p.join()
+
+    for i in range(len(x_vec)):
+        x_vec[i] = res_dict[i]
 
     print
     print "New x_vec is updated. Check the new x_vec."
@@ -231,9 +244,21 @@ if __name__ == "__main__":
         for i in range(len(x_vec)):
             print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
 
-        wk_pool = mp.Pool(N_WORKERS)
-        new_x_vec = wk_pool.map(worker_row, range(len(x_vec)))
-        x_vec = new_x_vec   # Since we use not-in-place rsvr_sample, we have to update x_vec
+        task_queue = mp.Queue()
+        res_dict = mp.Manager().dict()
+        wk_pool = []
+    
+        for i in range(len(x_vec)):     task_queue.put(i)
+        for i in range(N_WORKERS):      task_queue.put(-1)
+
+        for i in range(N_WORKERS):
+            p = mp.Process(target=worker_row, args=(i, task_queue, res_dict))
+            wk_pool.append(p)
+            p.start()
+
+        for p in wk_pool:               p.join()
+
+        for i in range(len(x_vec)):     x_vec[i] = res_dict[i]
 
         print
         print "Transition of x_vec is complete. Check the new x_vec."
