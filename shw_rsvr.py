@@ -11,18 +11,18 @@ DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/hourly_flowbin/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 15    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 60    # Ending timestamp
 FILETYPE = "flowbin"
-PERIOD   = 5    # # of time slots in a period
+PERIOD   = 24    # # of time slots in a period
 R        = 1    # Forecast # of steps
 ALPHA    = 0.2
 BETA     = 0.2
 GAMMA    = 0.2
-N_WORKERS= 4
+N_WORKERS= 1
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
-x_vec    = []               # State vector. Make it globally accessible
+x_vec    = mp.Manager().dict()  # State vector. Make it globally accessible (shared dictionary)
 y        = pv.KWTable()     # Current time slot's observation
 m_mat    = []               # Transition matrix
 u_vec    = []               # U-Vector for transition
@@ -124,7 +124,7 @@ def worker_row(wkid, task_queue, res_dict):
         if not u == 0.0:    res.aggr_inplace(y, 1.0, u)
 
         ori_size = len(res)
-        res = res.rsvr_sample(RSVR_SIZE, in_place=False)
+        res.rsvr_sample(RSVR_SIZE, in_place=True)
         print "   Size = %d -> %d" %(ori_size, len(res)),
         el_time = time.time() - st_time
         print "   Elapsed time = %f" %(el_time)
@@ -221,12 +221,18 @@ if __name__ == "__main__":
     for i in range(len(x_vec)):
         x_vec[i] = res_dict[i]
 
+    del l0
+    del b0
+    del s0_list         # Remove unused KWTables to release memory
+
     print
     print "New x_vec is updated. Check the new x_vec."
     for i in range(len(x_vec)):
         print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
     print
     print "---------- End of initialization ----------"
+
+    print x_vec
 
     # ---------- Recurrence: Transition and forecast ----------
     print
@@ -271,11 +277,9 @@ if __name__ == "__main__":
 
         el_time_recur = time.time() - st_time_recur
         print "Transition of x_vec is complete. Elapsed time = %f" %(el_time_recur)
-        #print
-        #print "Transition of x_vec is complete. Check the new x_vec."
-        #for i in range(len(x_vec)):
-        #    print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
-        #print
+        for i in range(len(x_vec)):
+            print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
+        print
 
 
         TS_CURR += INTERVAL
