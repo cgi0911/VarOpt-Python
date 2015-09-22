@@ -4,28 +4,32 @@ import pyvaropt as pv
 import sys
 import os
 import time
-import multiprocessing as mp
 
 RSVR_SIZE= 30000
 DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/hourly_flowbin/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 60    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 16 * 24    # Ending timestamp
 FILETYPE = "flowbin"
 PERIOD   = 24    # # of time slots in a period
 R        = 1    # Forecast # of steps
 ALPHA    = 0.2
 BETA     = 0.2
 GAMMA    = 0.2
-N_WORKERS= 1
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
-x_vec    = mp.Manager().dict()  # State vector. Make it globally accessible (shared dictionary)
+x_vec    = []               # State vector. Make it globally accessible (shared dictionary)
 y        = pv.KWTable()     # Current time slot's observation
 m_mat    = []               # Transition matrix
 u_vec    = []               # U-Vector for transition
+
+RES_DIR_FCAST = os.path.join(RES_DIR, "fcast")
+if not os.path.exists(RES_DIR_FCAST):   os.makedirs(RES_DIR_FCAST)
+
+
+
 
 def make_trans_matrix():
     ret = []
@@ -89,28 +93,24 @@ def forecast(r):
 
 
 
-def worker_samp(wkid, task_queue, res_dict):
-    while True:
+def do_samp():
+    for i in range(len(x_vec)):
         st_time = time.time()
-        i = task_queue.get()
-        if i == -1:     break       # Break when stop token received
-        print "Worker #%d is working on x_vec[%d]: KWTable(%-12x). Current size = %d" %(wkid, i, id(x_vec[i]), len(x_vec[i])),
+        print "Sampling x_vec[%d]: KWTable(%-12x). Current size = %d" %(i, id(x_vec[i]), len(x_vec[i])),
         res = x_vec[i].rsvr_sample(RSVR_SIZE, in_place=False)
         el_time = time.time() - st_time
         print "   Sampled size = %d    Elapsed time = %f" %(len(res), el_time)
-        res_dict[i] = res
+        x_vec[i] = res
     return
 
 
 
 
-def worker_row(wkid, task_queue, res_dict):
-    while True:
+def do_rows():
+    for i in range(len(x_vec)):
         st_time = time.time()
 
-        i = task_queue.get()
-        if i == -1:     break       # Break when stop token received
-        print "Worker #%d is working on transition of row #%d." %(wkid, i),
+        print "Working on transition of row #%d." %(i),
 
         res = pv.KWTable()
 
@@ -128,8 +128,10 @@ def worker_row(wkid, task_queue, res_dict):
         print "   Size = %d -> %d" %(ori_size, len(res)),
         el_time = time.time() - st_time
         print "   Elapsed time = %f" %(el_time)
-        res_dict[i] = res
+        x_vec[i] = res
     return
+
+
 
 
 if __name__ == "__main__":
@@ -142,7 +144,6 @@ if __name__ == "__main__":
     print
     print "-" * 80
     print "Using Python interpreter:", sys.executable
-    print "N_WORKERS =", N_WORKERS
     print "TS_START = %d, TS_END = %d" %(TS_START, TS_END)
     print "INTERVAL = %d, PERIOD = %d intervals" %(INTERVAL, PERIOD)
     print "(ALPHA, BETA, GAMMA) = (%f, %f, %f)" %(ALPHA, BETA, GAMMA)
@@ -186,7 +187,7 @@ if __name__ == "__main__":
         print "   Elapsed time =", el_time
 
 
-    for i in range(PERIOD-1):
+    for i in range(1, PERIOD):
         st_time = time.time()
         s0_list[i].aggr_inplace(l0, 1.0, -1.0)
         print "s0_list[%d] -= l0" %(i),
@@ -204,22 +205,7 @@ if __name__ == "__main__":
     for i in range(len(x_vec)):
         print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
 
-    task_queue = mp.Queue()
-    res_dict = mp.Manager().dict()
-    wk_pool = []
-
-    for i in range(len(x_vec)):     task_queue.put(i)
-    for i in range(N_WORKERS):      task_queue.put(-1)
-
-    for i in range(N_WORKERS):
-        p = mp.Process(target=worker_samp, args=(i, task_queue, res_dict))
-        wk_pool.append(p)
-        p.start()
-
-    for p in wk_pool:               p.join()
-
-    for i in range(len(x_vec)):
-        x_vec[i] = res_dict[i]
+    do_samp()
 
     del l0
     del b0
@@ -232,8 +218,6 @@ if __name__ == "__main__":
     print
     print "---------- End of initialization ----------"
 
-    print x_vec
-
     # ---------- Recurrence: Transition and forecast ----------
     print
     print "---------- Start of recursion ----------"
@@ -242,12 +226,15 @@ if __name__ == "__main__":
     print "Make U-vector..."
     u_vec = make_u_vec()
 
-    while TS_CURR <= TS_END:
+    while TS_CURR < TS_END:
         st_time_recur = time.time()
         # ---------- Forecast based on existing state vector ----------
         print
         print "## Iteration of time %d ##" %(TS_CURR)
         fcast = forecast(1)     # Make one step forecast.
+        fcast_fn = os.path.join(RES_DIR_FCAST, "%d.rec" %(TS_CURR + (R-1)*INTERVAL))
+        fcast.to_flowbin(fn=fcast_fn)
+
 
         # ---------- Transition ----------
         # First read in current time slot's records
@@ -256,24 +243,7 @@ if __name__ == "__main__":
 
         # Then do the transition of current state vector
         print "Transition of x_vec..."
-        #for i in range(len(x_vec)):
-        #    print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
-
-        task_queue = mp.Queue()
-        res_dict = mp.Manager().dict()
-        wk_pool = []
-
-        for i in range(len(x_vec)):     task_queue.put(i)
-        for i in range(N_WORKERS):      task_queue.put(-1)
-
-        for i in range(N_WORKERS):
-            p = mp.Process(target=worker_row, args=(i, task_queue, res_dict))
-            wk_pool.append(p)
-            p.start()
-
-        for p in wk_pool:               p.join()
-
-        for i in range(len(x_vec)):     x_vec[i] = res_dict[i]
+        do_rows()
 
         el_time_recur = time.time() - st_time_recur
         print "Transition of x_vec is complete. Elapsed time = %f" %(el_time_recur)
