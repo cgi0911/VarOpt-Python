@@ -83,7 +83,7 @@ def forecast(r):
     ret.aggr_inplace(s, 1.0, 1.0)
     ret.rsvr_sample(RSVR_SIZE, in_place=True)
     el_time = time.time() - st_time
-    print "Making %d-step forecast. Time stamp = %d. Elapsed time = %f" %(R, TS_CURR, el_time)
+    print "Making %d-step forecast. Time stamp = %d. Elapsed time = %f" %(R, TS_CURR + INTERVAL * (R-1), el_time)
     return ret
 
 
@@ -107,14 +107,22 @@ def worker_samp(wkid, task_queue, res_dict):
 def worker_row(wkid, task_queue, res_dict):
     while True:
         st_time = time.time()
+
         i = task_queue.get()
         if i == -1:     break       # Break when stop token received
         print "Worker #%d is working on transition of row #%d." %(wkid, i),
+
         res = pv.KWTable()
+
         row_vec = m_mat[i]
         u       = u_vec[i]
-        for j in range(len(row_vec)):   res.aggr_inplace(x_vec[j], 1.0, row_vec[j])
-        res.aggr_inplace(y, 1.0, u)
+
+        for j in range(len(row_vec)):
+            if row_vec[j] == 0.0:   continue    # No need to do 0-coeff aggregation
+            res.aggr_inplace(x_vec[j], 1.0, row_vec[j])
+
+        if not u == 0.0:    res.aggr_inplace(y, 1.0, u)
+
         ori_size = len(res)
         res = res.rsvr_sample(RSVR_SIZE, in_place=False)
         print "   Size = %d -> %d" %(ori_size, len(res)),
@@ -130,7 +138,7 @@ if __name__ == "__main__":
     s0_list = [pv.KWTable() for i in range(PERIOD)]     # create (w-1) empty tables
                                                         # note that s0_list[0] is not used
                                                         # indices 1..(PERIOD-1) are used
-    
+
     print
     print "-" * 80
     print "Using Python interpreter:", sys.executable
@@ -170,7 +178,7 @@ if __name__ == "__main__":
         b0.aggr_inplace(y, 1.0, 1.0/PERIOD**2)
         print "Read time slot", TS_CURR, "   l0 += y/W",
         print "   b0 += y/W^2",
-        if i < (PERIOD-1):   # Filling S_{0,1}, S_{0,2}, ... , S_{0,W-1} 
+        if i < (PERIOD-1):   # Filling S_{0,1}, S_{0,2}, ... , S_{0,W-1}
             s0_list[i+1].aggr_inplace(y, 1.0, 1.0)
             print "   s0_list[%d] += y" %(i+1),
         TS_CURR += INTERVAL
@@ -199,7 +207,7 @@ if __name__ == "__main__":
     task_queue = mp.Queue()
     res_dict = mp.Manager().dict()
     wk_pool = []
-    
+
     for i in range(len(x_vec)):     task_queue.put(i)
     for i in range(N_WORKERS):      task_queue.put(-1)
 
@@ -229,25 +237,26 @@ if __name__ == "__main__":
     u_vec = make_u_vec()
 
     while TS_CURR <= TS_END:
+        st_time_recur = time.time()
         # ---------- Forecast based on existing state vector ----------
-        print 
+        print
         print "## Iteration of time %d ##" %(TS_CURR)
         fcast = forecast(1)     # Make one step forecast.
 
         # ---------- Transition ----------
         # First read in current time slot's records
-        y = read_rec(TS_CURR) 
+        y = read_rec(TS_CURR)
         print "Read time slot %d, size = %d" %(TS_CURR, len(y))
-        
+
         # Then do the transition of current state vector
-        print "Transition of x_vec"
-        for i in range(len(x_vec)):
-            print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
+        print "Transition of x_vec..."
+        #for i in range(len(x_vec)):
+        #    print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
 
         task_queue = mp.Queue()
         res_dict = mp.Manager().dict()
         wk_pool = []
-    
+
         for i in range(len(x_vec)):     task_queue.put(i)
         for i in range(N_WORKERS):      task_queue.put(-1)
 
@@ -260,11 +269,13 @@ if __name__ == "__main__":
 
         for i in range(len(x_vec)):     x_vec[i] = res_dict[i]
 
-        print
-        print "Transition of x_vec is complete. Check the new x_vec."
-        for i in range(len(x_vec)):
-            print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
-        print
+        el_time_recur = time.time() - st_time_recur
+        print "Transition of x_vec is complete. Elapsed time = %f" %(el_time_recur)
+        #print
+        #print "Transition of x_vec is complete. Check the new x_vec."
+        #for i in range(len(x_vec)):
+        #    print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
+        #print
 
 
         TS_CURR += INTERVAL

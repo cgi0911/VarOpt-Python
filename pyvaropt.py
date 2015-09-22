@@ -303,6 +303,7 @@ class KWTable:
         """Aggregate two KWTables by given coefficients. Return a new KWTable.
         ret = lcoeff * lhs + rcoeff * rhs
         """
+        if rcoeff == 0.0:   return self     # No need to do 0-coeff aggregation
         ret = KWTable(in_table=self)
 
         if lcoeff != 1.0:
@@ -311,6 +312,7 @@ class KWTable:
         if rhs != None:
             for key, wt in rhs.table.iteritems():
                 if not key in ret.table:
+                    if wt == 0.0:   continue    # Sanity check.
                     ret.table[key] = rcoeff * wt
                 else:
                     ret.table[key] += rcoeff * wt
@@ -324,9 +326,12 @@ class KWTable:
     def aggr_inplace(self, rhs=None, lcoeff=1.0, rcoeff=1.0):
         """
         """
+        if rcoeff == 0.0:   return          # No need to do 0-coeff aggregation
+
         if rhs != None:
             for key, wt in rhs.table.iteritems():
                 if not key in self.table:
+                    if wt == 0.0:   continue    # Sanity check
                     self.table[key] = rcoeff * wt
                 else:
                     self.table[key] += rcoeff * wt
@@ -376,6 +381,7 @@ class KWTable:
             while True:     # Add an item, drop an item
                 try:
                     key, wt     = dict_iter.next()
+                    if wt == 0.0:   continue        # Sanity check. Skip zero-weight item.
                     x_dict      = cl.defaultdict(float)
                     small_sum   = thresh * len(t_list)
 
@@ -486,8 +492,8 @@ class PrefixQueryTable:
                 src_dst     = "d" if fields[0] == "d" else "s"  # src_dst default to s
             except:
                 src_dst     = "s"
-            
-            try:        
+
+            try:
                 ip_str          = fields[1]
                 ip_nw           = na.IPNetwork(ip_str)      # IP network in netaddr format
                 ip_prefixlen    = ip_nw.prefixlen           # Prefix length

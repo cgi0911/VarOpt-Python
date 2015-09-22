@@ -3,11 +3,9 @@
 import sys
 import time
 import struct
-import netaddr as na 
+import netaddr as na
 import collections as cl
 import random as rd
-import numpy as np
-import multiprocessing as mp
 import heapq
 import math
 import copy
@@ -19,7 +17,7 @@ import os
 class KWTable:
     """The Keyed Weight Table class.
     The main body is a dictionary in which
-    - keys are strings (not restricted to a fixed length) 
+    - keys are strings (not restricted to a fixed length)
     - values are signed double number.
     I intended to keep the KWTable class general so that it can deal with various types of data formats.
     """
@@ -30,10 +28,10 @@ class KWTable:
     rd.seed( int(time.time()) )
 
     def __init__(self, **kwargs):
-        """Constructor of a KWTable object. 
+        """Constructor of a KWTable object.
         It can read from different file formats:
         - "flowbin": 5-tuple records in binary format.
-                     Each record is 24 bytes long. First 16 bytes is 5-tuple - 
+                     Each record is 24 bytes long. First 16 bytes is 5-tuple -
                      (uint32, uint32, uint16, uint16, uint8) padded to 16 bytes, corresponding to
                      (src_ip, dst_ip, src_port, dst_port, protocol).
                      The following 8 bytes is a signed double precision number.
@@ -46,7 +44,7 @@ class KWTable:
                      weight is signed precision number expressed in string.
         - "trace":   Use libtrace. I'm working on it.
 
-        If working 5-tuple-based filetypes: 
+        If working 5-tuple-based filetypes:
         - The keys of the table shall be 5-tuples packed into 13-byte strings.
           4 bytes each for src_ip and dst_ip; 2 bytes each for src_port and dst_port; 1 byte for protocol. No padding.
         - The values shall be signed double precision numbers.
@@ -72,7 +70,7 @@ class KWTable:
                 # traces not yet supported
                 sys.stderr.write("Unrecognized file type. Please check your keyword arguments: %s\n" %(str(kwargs)))
                 return
-        
+
         # ---- Initialize from another KWTable ----
         elif in_table!=None:
             self.table = in_table.table.copy()  # Use the built-in copy method of defaultdict
@@ -90,11 +88,28 @@ class KWTable:
         """Destructor of the KWTable class.
         """
         if KWTable.SHOW_DESTRUCTION == True:
-            print "Deconstructing KWTable #%d at address: %s" %(self.tid, hex(id(self)))
+            print "Destroy KWTable(%x)" %(id(self))
 
 
 
-    
+
+    def __repr__(self):
+        ret = ""
+        count = 0
+        for key in self.table:
+            if count >= 1000:
+                ret += "Printing only 1000 items."
+                break
+            else:
+                src_ip_int, dst_ip_int = struct.unpack("II", key)
+                wt = self.table[key]
+                ret += "%4d:  %s %s -> %.10f\n" %(count+1, na.IPAddress(src_ip_int), na.IPAddress(dst_ip_int), wt)
+                count += 1
+        return ret
+
+
+
+
     def get_sum(self):
         """Simply get the sum of all weights.
         """
@@ -119,7 +134,8 @@ class KWTable:
             key_str = inFile.read(16)   # Remove the padding zeroes.
             wt_str  = inFile.read(8)
             if len(key_str) != 16:  break
-            key     = key_str[:13]
+            #key     = key_str[:13]
+            key     = key_str[:8]       # Taking only src and dst IP
             wt      = struct.unpack("d", wt_str)[0]
             if not key in self.table:
                 self.table[key] = wt
@@ -138,18 +154,19 @@ class KWTable:
         inFile = open(fn, "r")
         for line in inFile:
             fields = line.rstrip().split(' ')
-            src_ip_int = int(na.IPAddress(field[0]))
-            dst_ip_int = int(na.IPAddress(field[1]))
-            src_port   = int(field[2])
-            dst_port   = int(field[3])
-            prot       = int(field[4])
-            wt         = float(field[5])
-            key        = struct.pack("IIHHB", src_ip_int, dst_ip_int, src_port, dst_port, prot)
+            src_ip_int = int(na.IPAddress(fields[0]))
+            dst_ip_int = int(na.IPAddress(fields[1]))
+            #src_port   = int(fields[2])
+            #dst_port   = int(fields[3])
+            #prot       = int(fields[4])
+            wt         = float(fields[5])
+            #key        = struct.pack("IIHHB", src_ip_int, dst_ip_int, src_port, dst_port, prot)
+            key        = struct.pack("II", src_ip_int, dst_ip_int)  # Taking only src and dst IPs
             if not key in self.table:
                 self.table[key] = wt
             else:
                 self.table[key] += wt
-            
+
         inFile.close()
         return
 
@@ -172,11 +189,13 @@ class KWTable:
 
         count = 0
         for key, wt in self.table.iteritems():
-            src_ip_int, dst_ip_int, src_port, dst_port, prot = struct.unpack("IIHHB", key)
-            buf.write("%s %s %d %d %d %.10f\n"  %(na.IPAddress(src_ip_int), na.IPAddress(dst_ip_int), src_port, dst_port, prot, wt))
+            #src_ip_int, dst_ip_int, src_port, dst_port, prot = struct.unpack("IIHHB", key)
+            #buf.write("%s %s %d %d %d %.10f\n"  %(na.IPAddress(src_ip_int), na.IPAddress(dst_ip_int), src_port, dst_port, prot, wt))
+            src_ip_int, dst_ip_int = struct.unpack("II", key)       # Taking only src and dst IPs
+            buf.write("%s %s %.10f\n"  %(na.IPAddress(src_ip_int), na.IPAddress(dst_ip_int), wt))
             count += 1
             if count >= linenum:    break
-        
+
         if buf!=sys.stdout and buf!=sys.stderr:     # stdout and stderr should not be closed
             buf.close()
 
@@ -189,7 +208,8 @@ class KWTable:
         outFile = open(fn, "wb")
 
         for key, wt in self.table.iteritems():
-            rec = struct.pack("13sBBBd", key, 0, 0, 0, wt)
+            #rec = struct.pack("13sBBBd", key, 0, 0, 0, wt)
+            rec = struct.pack("8sBBBBBBBBd", key, 0, 0, 0, wt)
             outFile.write(rec)
 
         outFile.close()
@@ -252,7 +272,7 @@ class KWTable:
                 self.table[key] -= wt
                 if self.table[key] == 0.0: del self.table[key]
         return self
-        
+
 
 
 
@@ -275,7 +295,7 @@ class KWTable:
             self.table[key] *= coeff
 
         return
-        
+
 
 
 
@@ -283,6 +303,8 @@ class KWTable:
         """Aggregate two KWTables by given coefficients. Return a new KWTable.
         ret = lcoeff * lhs + rcoeff * rhs
         """
+        if rcoeff == 0.0:   return self     # Do not do 0-coefficient aggregation
+
         ret = KWTable(in_table=self)
 
         if lcoeff != 1.0:
@@ -291,6 +313,7 @@ class KWTable:
         if rhs != None:
             for key, wt in rhs.table.iteritems():
                 if not key in ret.table:
+                    if wt == 0.0:   continue    # Sanity check
                     ret.table[key] = rcoeff * wt
                 else:
                     ret.table[key] += rcoeff * wt
@@ -304,17 +327,32 @@ class KWTable:
     def aggr_inplace(self, rhs=None, lcoeff=1.0, rcoeff=1.0):
         """
         """
+        if rcoeff == 0.0:   return self     # Do not do 0-coefficient aggregation
+
         if rhs != None:
             for key, wt in rhs.table.iteritems():
                 if not key in self.table:
+                    if wt == 0.0:   continue    # Sanity check
                     self.table[key] = rcoeff * wt
                 else:
                     self.table[key] += rcoeff * wt
-                    if self.table[key] == 0.0:   del self.table[key]  # Delete the zero item.
-        
-        
-        
-        
+                    if self.table[key] == 0.0:  del self.table[key]  # Delete the zero item.
+
+
+
+
+    def check_zero_item(self):
+        """
+        """
+        for k in self.table:
+            if self.table[k] == 0.0:
+                print "This KWTable has zero item!",
+                return
+        print "This KWTable is good!",
+
+
+
+
     #@profile
     def rsvr_sample(self, k):
         """Use reservoir sampling to draw a k-entry sample out of the original KWTable.
@@ -322,85 +360,90 @@ class KWTable:
         - Uses threshold sampling.
         - Uses Horvitz-Thompson estimator to adjust the weights.
         - Please refer to:
-          [1] E. Cohen et al., "Composable, Scalable, and Accurate Weight Summarization 
+          [1] E. Cohen et al., "Composable, Scalable, and Accurate Weight Summarization
               of Unaggregated Data Sets", in VLDB '09.
         """
-        # Note that we are working on a KWTable object, 
+        # Note that we are working on a KWTable object,
         # of which the table is already uniquely keyed.
 
         if KWTable.SHOW_RSVR_SAMPLE:    print "VarOpt sample of %s down to size %d." %(hex(id(self)), k)
-        if len(self) <= k:  # Table size less than or equal to k.
-            return KWTable(in_table=self)
 
-        else:
-            ret         = KWTable()
-            dict_iter   = self.table.iteritems()    # Dictionary iterator
-            l_heap      = []                        # A min-heap for large (weight over threshold) items.
-            thresh      = 0.0                       # Threshold
-            temp_thresh = 0.0                       # Temporary threshold
-            t_list      = []                        # A list for items with abswt = threshold
-            x_dict      = cl.defaultdict(float)     # A dict for interim items.
-            small_sum   = 0.0                       # Sum of all small items.
-            rand_num    = 0.0                       # A uniform random number between 0 and 1
+        if len(self) <= k:  # No need to sample.
+            return self
 
+        dict_iter   = self.table.iteritems()    # Dictionary iterator
 
-            while len(l_heap) < k:                      # Push k items to heap.
-                key, wt = dict_iter.next()
-                if wt == 0.0:   continue                # Ignore zero items
-                heapq.heappush(l_heap, (abs(wt), key))  # Note that each element in the heap is a 
-                                                        # 2-tuple (abs(wt), key). It is because tuples
-                                                        # compared in lexicographical order (compare first, then second)
-                                                        # Here we use abs(wt) as our heap weight.
+        l_heap      = []                        # A min-heap for large (weight over threshold) items.
+        t_list      = []                        # A list for items with abswt = threshold
+        x_dict      = {}
 
-            while True:     # Add an item, drop an item
-                try:
-                    key, wt     = dict_iter.next()
-                    x_dict      = cl.defaultdict(float)
-                    small_sum   = thresh * len(t_list)
+        thresh      = 0.0                       # threshold (tau in [1])
+        temp_thresh = 0.0                       # Temporary threshold (t in [1])
+        small_sum   = 0.0                       # Sum of all small items.
+        rand_num    = 0.0                       # A uniform random number between 0 and 1 (r in [1])
 
-                    if abs(wt) > thresh:    heapq.heappush(l_heap, (abs(wt), key))
-                    else:
-                        x_dict[key] = abs(wt)
-                        small_sum   += abs(wt)
+        while len(l_heap) < k:                      # Push k items to heap.
+            key, wt = dict_iter.next()
+            heapq.heappush(l_heap, (abs(wt), key))  # Note that each element in the heap is a
+                                                    # 2-tuple (abs(wt), key). It is because tuples
+                                                    # compared in lexicographical order (compare first, then second)
+                                                    # Here we use abs(wt) as our heap weight.
 
-                    while small_sum >= (len(t_list) + len(x_dict) -1) * l_heap[0][0]:
-                        abswt, key  = heapq.heappop(l_heap)
-                        x_dict[key] = abswt
-                        small_sum   += abswt
+        #count = 0
+        while True:                             # Add an item, drop an item
+            try:                    key, wt     = dict_iter.next()
+            except StopIteration:   break       # End of the dictionary
 
-                    temp_thresh = small_sum / (len(t_list) + len(x_dict) - 1)
-                    rand_num    = rd.uniform(0, 1)
-                    
-                    if rand_num < len(t_list) * (1 - thresh/temp_thresh):   # Drop an item from t_list
-                        d = int(rand_num / (1 - thresh/temp_thresh))
-                        t_list[d] = t_list[-1]
-                        del t_list[-1]
-                    else:                                                   # Drop an item from x_list
-                        rand_num -= len(t_list) * (1 - thresh/temp_thresh)
-                        x_iter   = x_dict.iteritems() 
-                        while rand_num > 0:
-                            key, abswt = x_iter.next()
-                            rand_num -= (1 - abswt / temp_thresh)
-                        del x_dict[key]
+            x_dict      = {}                    # Reset x_dict
+            small_sum   = thresh * len(t_list)
 
-                    thresh = temp_thresh
-                    for key, abswt in x_dict.iteritems():   t_list.append((key, abswt))
+            if abs(wt) > thresh:                # Add new item to the l_heap
+                heapq.heappush(l_heap, (abs(wt), key))
+            else:                               # Add new item to the x_dict
+                x_dict[key] = abs(wt)
+                small_sum   += abs(wt)
 
+            while len(l_heap) > 0 and small_sum >= (len(t_list) + len(x_dict) -1) * l_heap[0][0]:
+                                                        # Make sure to check if l_heap is non-empty...
+                abswt, key  = heapq.heappop(l_heap)     # Move small items and add to x_dict.
+                x_dict[key] = abswt
+                small_sum   += abswt
 
-                except StopIteration:
-                    break
+            temp_thresh = small_sum / float(len(t_list) + len(x_dict) - 1)   # Future threshold
+            rand_num    = rd.uniform(0, 1)
 
+            """
+            try:
+                t = len(t_list) * (1 - thresh/temp_thresh)
+            except:
+                print thresh, temp_thresh, small_sum, abswt, len(l_heap), len(t_list), len(x_dict), count, count2
+            """
 
+            if rand_num < len(t_list) * (1 - thresh/temp_thresh):   # Drop an item from t_list
+                d = int(rand_num / (1 - thresh/temp_thresh))
+                dkey = t_list[d][0]
+                t_list[d] = t_list[-1]      # Swap the item to be deleted with list tail.
+                                            # Swap-then-delete makes deletion quicker.
+                del t_list[-1]
 
-            
-            for abswt, key in l_heap:
-                ret.table[key] = math.copysign(abswt, self.table[key])
+            else:                                                   # Drop an item from x_dict
+                rand_num -= len(t_list) * (1 - thresh/temp_thresh)
+                x_iter   = x_dict.iteritems()
+                while rand_num > 0:
+                    dkey, abswt = x_iter.next()
+                    rand_num -= (1 - abswt / temp_thresh)
+                del x_dict[dkey]
 
-            for key, abswt in t_list:
-                ret.table[key] = math.copysign(thresh, self.table[key])
+            thresh = temp_thresh
+            for key, abswt in x_dict.iteritems():   t_list.append((key, abswt))
+            #count += 1
 
-            return ret
-                        
+        # Post-processing
+        ret = KWTable()
+        for abswt, key in l_heap:   ret.table[key] = math.copysign(abswt,  self.table[key])
+        for key, abswt in t_list:   ret.table[key] = math.copysign(thresh, self.table[key])
+        return ret
+
 
 
 
@@ -429,36 +472,48 @@ class PrefixQueryTable:
 
     def from_txt_file(self, fn):
         """Parse a text file into prefix query table. Each row is in the format:
-        <IP segment in CIDR expression> <src or dst>
+        <s or d>,<IP segment in CIDR expression>,<default value>
         An example:
-        123.45.67.0/24 src
-        
+        s,123.45.67.0/24,1000.0
+
         This function can be repeatedly call to add entries from various files.
         All entries in the table shall be unique.
         """
         inFile = open(fn, "r")
         for line in inFile:
-            fields = line.rstrip().split(' ')           # Parse the line
-            ip_str          = fields[0]
-            try: src_dst    = fields[1]
-            except: src_dst = "src"
-            ip_nw           = na.IPNetwork(ip_str)      # IP network in netaddr format
-            ip_prefixlen    = ip_nw.prefixlen           # Prefix length
-            ip              = ip_nw.cidr.ip             # CIDR IP in netaddr format
-            ip_int          = int(ip)                   # CIDR IP in integer
-            if src_dst == "dst":    src_dst = "dst"
-            else:                   src_dst = "src"     # Each row defines a source IP segment
-                                                        # unless explicitly specified as dst.
-            
+            fields = line.rstrip().split(',')           # Parse the line
+            try:
+                src_dst     = "d" if fields[0] == "d" else "s"  # src_dst default to s
+            except:
+                src_dst     = "s"
+
+            try:
+                ip_str          = fields[1]
+                ip_nw           = na.IPNetwork(ip_str)      # IP network in netaddr format
+                ip_prefixlen    = ip_nw.prefixlen           # Prefix length
+                ip              = ip_nw.cidr.ip             # CIDR IP in netaddr format
+                ip_int          = int(ip)                   # CIDR IP in integer
+            except:                                         # Cannot convert the string into IP network
+                print "Failed to parse into IP network expression!"
+                ip_prefixlen    = 0
+                ip_int          = 0
+
+            try:
+                wt              = fields[2]
+            except:
+                wt              = 0.0                       # default to 0.0
+
             #Add key to self.table and corresponding check item to self.checkdict
             key = (ip_int, ip_prefixlen, src_dst)       # Key is a tuple of (ip in iteger, prefix length, src/dst string)
-            if key in self.table:               continue                    # Already existing item. Skip processing. Keep counter value.
+
+            if key in self.table:               self.table[key] += 0.0      # Already existing item. Skip processing. Keep counter value.
             else:                               self.table[key] = 0.0       # New item. Add an entry. Counter set to 0.0.
-            checkitem = (src_dst, ip_prefixlen)
+
+            checkitem = (src_dst, ip_prefixlen)     # A combination of src_dst and prefix length
             if checkitem in self.checkdict:     self.checkdict[checkitem] += 1  # Already existing item.
-            else:                               self.checkdict[checkitem] = 1   # New item. Add an entry. Counter set to 1.                            
-                
-                
+            else:                               self.checkdict[checkitem] = 1   # New item. Add an entry. Counter set to 1.
+
+
 
 
     def __del__(self):
@@ -469,52 +524,75 @@ class PrefixQueryTable:
 
 
     def __len__(self):
-        return 
+        return
 
 
 
 
-    def __add__(lhs, rhs):
-        ret = copy.copy(lhs)        # Shallow copy
-        for key in rhs.table:
-            if key in ret.table:    # Overlapping items
-                ret.table[key] += rhs.table[key]    # Add up the counter values
-                continue
-            else:
-                ret.table[key] = rhs.table[key]
-                checkitem = PrefixQueryTable._get_checkitem_from_key(key)
-                if checkitem in ret.checkdict:  ret.checkdict[checkitem] += 1
-                else:                           ret.checkdict[checkitem] = 1
+    def __repr__(self):
+        ret = ""
+        for key in self.table:
+            ip_nw = na.IPNetwork(na.IPAddress(key[0]))
+            ip_nw.prefixlen = key[1]
+            ip_nw = ip_nw.cidr                          # Remove redundant bits
+            src_dst = key[2]
+            ret += "%-4s %-20s %-.10f\n" %(src_dst, str(ip_nw), self.table[key])
+        return ret
+
+
+
+    def wtsum(self, rhs, lcoeff, rcoeff):
+        """ The two prefix query tables must have identical key sets!
+        """
+        if not self.table.keys() == rhs.table.keys() or not self.checkdict.keys() == rhs.checkdict.keys():
+            print "Cannot do weighted sum on two prefix query tables. Not perfectly aligned."
+            return None
+
+        ret = PrefixQueryTable()
+        for key in self.table:      ret.table[key] = self.table[key] * lcoeff + rhs.table[key] * rcoeff
+        for key in self.checkdict:  ret.checkdict[key] = self.checkdict[key]
+
+        return ret
 
 
 
 
-    @classmethod
-    def _get_checkitem_from_key(cls, key):
-        return (key[2], key[1])
+    def to_txt(self, fn):
+        """
+        """
+        myFile = open(fn, "w")
+        for k in self.table:
+            ip_nw = na.IPNetwork(na.IPAddress(k[0]))
+            ip_nw.prefixlen = k[1]
+            ip_nw = ip_nw.cidr                          # Remove redundant bits
+            src_dst = k[2]
+            myFile.write("%s,%s,%.10f\n" %(src_dst, str(ip_nw), self.table[k]))
+        myFile.close()
 
 
 
-    
+
     def get_data(self):
         ret = []
         for k in self.table.keys():                     # Key order matters!
             ip_nw = na.IPNetwork(na.IPAddress(k[0]))
             ip_nw.prefixlen = k[1]
             ip_nw = ip_nw.cidr                          # Remove redundant bits
-            ret.append((str(ip_nw), self.table[k]))     # Convert to string
+            src_dst = k[2]
+            ret.append((src_dst, str(ip_nw), self.table[k]))     # Convert to string
         return ret
 
 
 
-    
+
     def get_keys(self):
         ret = []
         for k in self.table.keys():                     # Key order matters!
             ip_nw = na.IPNetwork(na.IPAddress(k[0]))
             ip_nw.prefixlen = k[1]
             ip_nw = ip_nw.cidr                          # Remove redundant bits
-            ret.append(str(ip_nw))                      # Convert to string
+            src_dst = k[2]
+            ret.append(str(ip_nw) + ' ' + src_dst)                      # Convert to string
         return ret
 
 
@@ -537,7 +615,7 @@ class PrefixQueryTable:
         """
         for kwkey, wt in kwtable.table.iteritems():
             sip, dip = struct.unpack("II", kwkey[:8])
-            for checkitem in self.checkdict:   
+            for checkitem in self.checkdict:
                 src_dst = checkitem[0]
                 if src_dst == "src":        ipkey = sip
                 else:                       ipkey = dip
@@ -560,240 +638,5 @@ class PrefixQueryTable:
 
 
 
-class Prediction:
-    """This class encapsulates two things: A transition matrix and a state vector.
-    Transistion matrix is an MxM matrix of real numbers.
-    The u-vector is a vector of M real numbers.
-    The state vector is a vector of M KWTable objects. 
-    """
-    SHOW_IMPLICIT_SAMPLING  = False
-    SHOW_FILE_READING       = False
-    SHOW_TIMESLOT_INIT      = True
-    SHOW_PERIOD_INIT        = True
-    SHOW_STATEVEC_INIT      = True
-    N_WORKERS               = 4
-
-    def __init__(self, **kwargs):
-        """
-        """
-        # ---- Model-neutral parameters ----
-        self.model      = kwargs.get("model", "SHW")    # Prediction model
-        self.folder     = kwargs.get("folder", ".")     # The folder of the data set.
-        self.fn_list    = sorted( [fn for fn in os.listdir(self.folder) \
-                                  if os.path.isfile(os.path.join(self.folder, fn)) \
-                                  and fn.split('.')[0].isdigit()] ) 
-                                                        # Get the ordered list of flow record data files
-                                                        # Sorted. We assume all files have simply
-                                                        # timestamp as their filenames.
-        self.tstamp_list= [int(fn.split('.')[0]) for fn in self.fn_list] # Integer timestamps, ordered
-        self.filetype   = kwargs.get("filetype", "flowbin")     # The file type of data set
-        self.grouping   = kwargs.get("grouping", 1)     # How many files in a time slot?
-        self.period     = kwargs.get("period", 24)      # How many time slots in a period?
-        self.interval   = (self.tstamp_list[1] - self.tstamp_list[0]) * self.grouping * self.period   # Time interval of a period
-        self.curr_time  = 0                             # Current timestamp
-        self.mat_size   = 0                             # Number of column/rows in transition matrix.
-                                                        # Value will be assigned later according to model.
-        self.max_mem    = kwargs.get("max_mem", 3000000)    # Max allowed size for any aggregation used
-        self.k          = kwargs["k"]        
-        self.fn_list_iter = iter(self.fn_list)          # Iterator for fn_list
-        self.tstamp_list_iter = iter(self.tstamp_list)  # Iterator for tstamp_list
-        
-        # ---- Initialize the model ----
-        self.t_mat, self.u_vec      = self.init_matrices(**kwargs)   # Transition matrix
-        self.state_vec   = self.init_statevec(**kwargs)
-        if Prediction.SHOW_STATEVEC_INIT:   print "State vector initialized."
-        
-    
-    
-    
-    
-    def read_time_slot(self):
-        """
-        max_mem:  Maximum memory size (# entries) allowed during aggregation.
-        """
-        ret = KWTable()
-        for i in range(self.grouping):
-            try:
-                fn = self.fn_list_iter.next()
-                self.curr_time = self.tstamp_list_iter.next()
-                fpath = os.path.join(self.folder, fn)
-                if Prediction.SHOW_FILE_READING:    print "Reading %s" %(fpath)
-                if self.filetype == "flowbin":
-                    ret.read_from_flowbin(fpath)
-                elif self.filetype == "flowtxt":
-                    ret.read_from_flowtxt(fpath)
-                else:
-                    sys.stderr.write("Predictors.get_time_slot(): Unrecognized file type %s.\n"
-                                     %(self.filetype))            
-                if len(ret) >= self.max_mem:
-                    if Prediction.SHOW_IMPLICIT_SAMPLING:
-                        print "Current size = %d > %d. Sample down to %d" %(len(ret), self.max_mem, self.k)
-                    ret = ret.rsvr_sample(self.max_mem)
-                
-            except StopIteration:
-                sys.stderr.write("get_time_slot(): No more files to read in the data set! Last file name %s\n"
-                                 %(fpath))
-                break
-        
-        return ret
-        
-        
-        
-    
-    def init_statevec(self, **kwargs):
-        """
-        """
-        if self.model == "SHW":
-            self.mat_size = self.period + 1     # Set matrix dimension (# of columns == # of rows)
-            return self.init_statevec_shw(**kwargs)
-        else:
-            sys.stderr.write("Predictors.init_statevec(): Unrecognized prediction model %s.\n" %(model))
-            return None
-    
-    
-    
-    
-    def init_statevec_shw(self, **kwargs):
-        """Initialize state vector 
-        """        
-        b0 = KWTable()
-        l0 = KWTable()
-        s0 = [KWTable()] * self.period
-        s0_cnt = 0
-        
-        # First training period: b0 = b0 - y for each time slot
-        for i in range(self.period):
-            y = self.read_time_slot()
-            if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(self.curr_time)
-            b0 -= y
-            if len(b0) >= self.max_mem:     b0 = b0.rsvr_sample(self.k)     # Size down if too large
-        b0 = b0.rsvr_sample(self.k)
-        b0.scale_inplace(1.0/self.period**2)   # Finalize b0
-        
-        # Second training period
-        if Prediction.SHOW_PERIOD_INIT:         print "Have read a period."            
-        for i in range(self.period):
-            y = self.read_time_slot()
-            if Prediction.SHOW_TIMESLOT_INIT:   print "Reading time slot #%d" %(self.curr_time)
-            l0 += y
-            if len(l0) >= self.max_mem:     l0 = l0.rsvr_sample(self.k)     #Size down if too large
-            s0[s0_cnt]  += y
-            if len(s0[s0_cnt]) >= self.max_mem:     s0[s0_cnt]  =  s0[s0_cnt].rsvr_sample(self.k) 
-            s0_cnt      += 1
-        l0 = l0.rsvr_sample(self.k)
-        l0.scale_inplace(1.0/self.period)      # Finalize l0
-        if Prediction.SHOW_PERIOD_INIT:     print "Have read a period."
-        
-        s0_cnt = 0
-        for i in range(self.period):
-            s0[s0_cnt] -= l0
-            s0[s0_cnt] = s0[s0_cnt].rsvr_sample(self.k)
-            
-        ret = [b0, l0] + s0[:-1]
-        return ret
-    
-    
-
-    
-    def init_matrices(self, **kwargs):
-        """
-        """
-        if self.model == "SHW":
-            return self.init_matrices_shw(**kwargs)
-        else:
-            sys.stderr.write("Unrecognized prediction model %s.\n" %(model))
-            return None
-    
-    
-    
-    
-    def init_matrices_shw(self, **kwargs):
-        """
-        """
-        # Common initialization
-        self.mat_size = self.period+1
-        ret = np.zeros((self.mat_size, self.mat_size))
-        
-        
-        self.alpha  = kwargs.get("alpha", 0.2)
-        self.beta   = kwargs.get("beta", 0.2)
-        self.gamma  = kwargs.get("gamma", 0.2)     
-        
-        # Make transition matrix
-        ret[0][0] = 1.0 - self.alpha
-        ret[0][1] = 1.0 - self.alpha
-        ret[0][2] = -1.0 * self.alpha
-        
-        ret[1][0] = -1.0 * self.beta
-        ret[1][1] = 1.0 - self.beta
-        ret[1][2] = -1.0 * self.beta
-        
-        for i in range(self.period - 2):
-            ret[2+i][0] = self.gamma / self.period 
-            ret[2+i][1] = self.gamma / self.period
-            ret[2+i][2] = self.gamma / self.period
-            ret[2+i][3+i] = 1.0
-        
-        ret[self.period][0] = self.gamma / self.period  
-        ret[self.period][1] = self.gamma / self.period
-        ret[self.period][2] = self.gamma / self.period - 1.0
-        for i in range(self.period - 2):
-            ret[self.period][3+i] = -1.0
-            
-        # Make u-vector
-        ret2 = np.array([-1.0 * self.gamma / self.period] * self.mat_size)
-        ret2[0] = self.alpha
-        ret2[1] = self.beta
-        
-        # Return
-        return ret, ret2
-    
-    
-    
-    
-    def _row_operation(self, j):
-        """
-        """
-        row = self.t_mat[j]
-        u   = self.u_vec[j]
-        ret = KWTable()
-
-        for i in range(self.mat_size):
-            if row[i] == 0.0:   continue
-            else:
-                ret.aggr_inplace(self.state_vec[i], 1.0, row[i])
-                if len(ret) >= self.max_mem:    ret = ret.rsvr_sample(self.k)
-        
-        if u != 0.0:    ret.aggr_inplace(self.y, 1.0, u)
-        ret = ret.rsvr_sample(self.k)
-        return ret 
-    
-    
-    
-    
-    def transition(self):
-        """
-        """
-        self.y = self.read_time_slot()
-        mypool = mp.Pool(Prediction.N_WORKERS)
-        new_state_vec = mypool.map(self._row_operation, range(self.mat_size))
-        self.state_vec = new_state_vec
-   
-
-    
-    
-    def forecast(self, n_step):
-        """
-        """
-        one_pos = 1 + (n_step % self.period)
-        ret = KWTable()
-        ret += self.state_vec[0]
-        ret.aggr_inplace(self.state_vec[1], 1.0, float(n_step))
-        ret += self.state_vec[one_pos]
-        return ret
-
-    
-    
-    
 if __name__ == "__main__":
     pass
