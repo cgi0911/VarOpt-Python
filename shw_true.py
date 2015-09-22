@@ -5,8 +5,10 @@ import sys
 import os
 import time
 import numpy as np
+import netaddr as na
 
 RSVR_SIZE= 30000
+FN_PREF  = "./test_data/prefix_all.txt"
 DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/hourly_flowbin/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
@@ -21,13 +23,13 @@ GAMMA    = 0.2
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
-x_vec    = []               # State vector. Make it globally accessible (shared dictionary)
-y        = pv.KWTable()     # Current time slot's observation
-m_mat    = []               # Transition matrix
-u_vec    = []               # U-Vector for transition
+x_vec    = None             # State vector. Make it globally accessible (shared dictionary)
+y        = None             # Current time slot's observation
+m_mat    = None             # Transition matrix
+u_vec    = None             # U-Vector for transition
 
-RES_DIR_FCAST = os.path.join(RES_DIR, "fcast")
-if not os.path.exists(RES_DIR_FCAST):   os.makedirs(RES_DIR_FCAST)
+RES_DIR_TRUEFCAST = os.path.join(RES_DIR, "true_fcast")
+if not os.path.exists(RES_DIR_TRUEFCAST):   os.makedirs(RES_DIR_TRUEFCAST)
 
 
 
@@ -73,23 +75,23 @@ def make_u_vec():
 
 
 
-def read_rec(ts):
-    return pv.KWTable(filetype=FILETYPE, fn=os.path.join(DATA_DIR, str(ts)+".rec"))
+def read_rec(ts, pfx):
+    table = pv.KWTable(filetype=FILETYPE, fn=os.path.join(DATA_DIR, str(ts)+".rec"))
+    pfx.query(table)
+    pfx_val = pfx.get_values()
+    return np.array(pfx_val).reshape(1, len(pfx_val))
+    
 
 
 
-
-def forecast(r):
+def forecast():
     # r is the # of steps to look ahead.
-    st_time = time.time()
-    ret = pv.KWTable()
-    l = x_vec[0]
-    b = x_vec[1]
-    s = x_vec[r+1]  # r-th seasonal component
-    ret.aggr_inplace(l, 1.0, 1.0)
-    ret.aggr_inplace(b, 1.0, float(r))
-    ret.aggr_inplace(s, 1.0, 1.0)
-    ret.rsvr_sample(RSVR_SIZE, in_place=True)
+    one_pos = 1 + (R % PERIOD)
+    f_vec = [1.0, float(R)] + [0.0] * (PERIOD-1)
+    f_vec[one_pos] = 1.0
+    f_mat = np.array(f_vec).reshape(1, PERIOD+1)
+    #print f_mat.shape, x_vec.shape
+    ret = np.dot(f_mat, x_vec).flatten()
     el_time = time.time() - st_time
     print "Making %d-step forecast. Time stamp = %d. Elapsed time = %f" %(R, TS_CURR + INTERVAL * (R-1), el_time)
     return ret
@@ -97,51 +99,36 @@ def forecast(r):
 
 
 
-def do_samp():
-    for i in range(len(x_vec)):
-        st_time = time.time()
-        print "Sampling x_vec[%d]: KWTable(%-12x). Current size = %d" %(i, id(x_vec[i]), len(x_vec[i])),
-        res = x_vec[i].rsvr_sample(RSVR_SIZE, in_place=False)
-        el_time = time.time() - st_time
-        print "   Sampled size = %d    Elapsed time = %f" %(len(res), el_time)
-        x_vec[i] = res
-    return
+def transition():
+    #print m_mat.shape, x_vec.shape, u_vec.shape, y.shape
+    ret = np.dot(m_mat, x_vec) + np.dot(u_vec, y)
+    return ret
 
 
 
 
-def do_rows():
-    for i in range(len(x_vec)):
-        st_time = time.time()
-
-        print "Working on transition of row #%d." %(i),
-
-        res = pv.KWTable()
-
-        row_vec = m_mat[i]
-        u       = u_vec[i]
-
-        for j in range(len(row_vec)):
-            if row_vec[j] == 0.0:   continue    # No need to do 0-coeff aggregation
-            res.aggr_inplace(x_vec[j], 1.0, row_vec[j])
-
-        if not u == 0.0:    res.aggr_inplace(y, 1.0, u)
-
-        ori_size = len(res)
-        res.rsvr_sample(RSVR_SIZE, in_place=True)
-        print "   Size = %d -> %d" %(ori_size, len(res)),
-        el_time = time.time() - st_time
-        print "   Elapsed time = %f" %(el_time)
-        x_vec[i] = res
-    return
+def to_txt_file(vec, pfx, fn):
+    keys = pfx.get_keys()
+    pfx_size = len(pfx)
+    vec = vec.flatten()
+    outfile = open(fn, "w")
+    for i in range(pfx_size):
+        key_fields = keys[i].split(' ')
+        nw = key_fields[0]
+        sd = key_fields[1]         
+        outfile.write("%s,%s,%f\n" %(sd, nw, vec[i]))
+    outfile.close()
 
 
 
 
 if __name__ == "__main__":
-    l0 = 
-    b0 = pv.KWTable()
-    s0_list = [pv.KWTable() for i in range(PERIOD)]     # create (w-1) empty tables
+    pfx = pv.PrefixQueryTable(fn=FN_PREF)
+    pfx_size = len(pfx)
+    l0 = np.zeros(pfx_size).reshape(1, pfx_size)
+    b0 = np.zeros(pfx_size).reshape(1, pfx_size)
+    s0_list = [np.zeros(pfx_size).reshape(1, pfx_size) for i in range(PERIOD)]
+                                                        # create (w-1) empty vectors
                                                         # note that s0_list[0] is not used
                                                         # indices 1..(PERIOD-1) are used
 
@@ -165,8 +152,8 @@ if __name__ == "__main__":
     TS_CURR = TS_START
     for i in range(PERIOD):
         st_time = time.time()
-        y = read_rec(TS_CURR)
-        b0.aggr_inplace(y, 1.0, -1.0/PERIOD**2)
+        y = read_rec(TS_CURR, pfx)
+        b0 = b0 - y/float(PERIOD)**2
         print "Read time slot", TS_CURR, "   b0 -= y/W^2",
         TS_CURR += INTERVAL
         el_time = time.time() - st_time
@@ -178,13 +165,13 @@ if __name__ == "__main__":
     print "---------- Initialization: Second training period ----------"
     for i in range(PERIOD):
         st_time = time.time()
-        y = read_rec(TS_CURR)
-        l0.aggr_inplace(y, 1.0, 1.0/PERIOD)
-        b0.aggr_inplace(y, 1.0, 1.0/PERIOD**2)
+        y = read_rec(TS_CURR, pfx)
+        l0 = l0 + y/float(PERIOD)
+        b0 = b0 + y/float(PERIOD)**2
         print "Read time slot", TS_CURR, "   l0 += y/W",
         print "   b0 += y/W^2",
         if i < (PERIOD-1):   # Filling S_{0,1}, S_{0,2}, ... , S_{0,W-1}
-            s0_list[i+1].aggr_inplace(y, 1.0, 1.0)
+            s0_list[i+1] = s0_list[i+1] + y
             print "   s0_list[%d] += y" %(i+1),
         TS_CURR += INTERVAL
         el_time = time.time() - st_time
@@ -193,33 +180,19 @@ if __name__ == "__main__":
 
     for i in range(1, PERIOD):
         st_time = time.time()
-        s0_list[i].aggr_inplace(l0, 1.0, -1.0)
+        s0_list[i] = s0_list[i] - l0
         print "s0_list[%d] -= l0" %(i),
         el_time = time.time() - st_time
         print "   Elapsed time =", el_time
 
+    print l0.shape
+    print b0.shape
+    for s0 in s0_list: print s0.shape
 
     # ---------- Form state vector ----------
     print
     print "--------- Form initial state vector and sample each element ----------"
-    x_vec = [l0, b0] + s0_list[1:]
-
-
-    # ---------- Sample each element ----------
-    for i in range(len(x_vec)):
-        print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
-
-    do_samp()
-
-    del l0
-    del b0
-    del s0_list         # Remove unused KWTables to release memory
-
-    print
-    print "New x_vec is updated. Check the new x_vec."
-    for i in range(len(x_vec)):
-        print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
-    print
+    x_vec = np.array([l0.flatten(), b0.flatten()] + [s0.flatten() for s0 in s0_list[1:]])
     print "---------- End of initialization ----------"
 
     # ---------- Recurrence: Transition and forecast ----------
@@ -227,33 +200,27 @@ if __name__ == "__main__":
     print "---------- Start of recursion ----------"
     print "Make transition matrix..."
     m_mat = make_trans_matrix()
+    print m_mat
     print "Make U-vector..."
     u_vec = make_u_vec()
+    print u_vec
 
     while TS_CURR < TS_END:
         st_time_recur = time.time()
         # ---------- Forecast based on existing state vector ----------
         print
         print "## Iteration of time %d ##" %(TS_CURR)
-        fcast = forecast(1)     # Make one step forecast.
-        fcast_fn = os.path.join(RES_DIR_FCAST, "%d.rec" %(TS_CURR + (R-1)*INTERVAL))
-        fcast.to_flowbin(fn=fcast_fn)
-
+        fcast = forecast()     # Make one step forecast.
+        fcast_fn = os.path.join(RES_DIR_TRUEFCAST, "%d.txt" %(TS_CURR + (R-1)*INTERVAL))
+        to_txt_file(fcast, pfx, fcast_fn)
 
         # ---------- Transition ----------
         # First read in current time slot's records
-        y = read_rec(TS_CURR)
+        y = read_rec(TS_CURR, pfx)
         print "Read time slot %d, size = %d" %(TS_CURR, len(y))
 
         # Then do the transition of current state vector
         print "Transition of x_vec..."
-        do_rows()
-
-        el_time_recur = time.time() - st_time_recur
-        print "Transition of x_vec is complete. Elapsed time = %f" %(el_time_recur)
-        for i in range(len(x_vec)):
-            print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
-        print
-
+        x_vec = transition()
 
         TS_CURR += INTERVAL

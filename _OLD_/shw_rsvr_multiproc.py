@@ -18,7 +18,7 @@ R        = 1    # Forecast # of steps
 ALPHA    = 0.2
 BETA     = 0.2
 GAMMA    = 0.2
-N_WORKERS= 1
+N_WORKERS= 4
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
@@ -228,7 +228,7 @@ if __name__ == "__main__":
     print
     print "New x_vec is updated. Check the new x_vec."
     for i in range(len(x_vec)):
-        print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]))
+        print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
     print
     print "---------- End of initialization ----------"
 
@@ -246,6 +246,7 @@ if __name__ == "__main__":
         print
         print "## Iteration of time %d ##" %(TS_CURR)
         fcast = forecast(1)     # Make one step forecast.
+        print "Forcast abs_sum =", fcast.get_abssum()
 
         # ---------- Transition ----------
         # First read in current time slot's records

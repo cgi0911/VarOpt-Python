@@ -531,7 +531,7 @@ class PrefixQueryTable:
 
 
     def __len__(self):
-        return
+        return len(self.table)
 
 
 
@@ -620,6 +620,7 @@ class PrefixQueryTable:
     def query(self, kwtable):
         """
         """
+        self.reset()
         for kwkey, wt in kwtable.table.iteritems():
             sip, dip = struct.unpack("II", kwkey[:8])
             for checkitem in self.checkdict:
