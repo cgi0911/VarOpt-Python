@@ -294,7 +294,6 @@ class KWTable:
         """
         for key in self.table:
             self.table[key] *= coeff
-
         return
 
 
@@ -304,13 +303,12 @@ class KWTable:
         """Aggregate two KWTables by given coefficients. Return a new KWTable.
         ret = lcoeff * lhs + rcoeff * rhs
         """
-        if rcoeff == 0.0:   return self     # No need to do 0-coeff aggregation
         ret = KWTable(in_table=self)
 
         if lcoeff != 1.0:
             ret.scale_inplace(lcoeff)
 
-        if rhs != None:
+        if rhs != None and rcoeff != 0.0:
             for key, wt in rhs.table.iteritems():
                 if not key in ret.table:
                     if wt == 0.0:   continue    # Sanity check.
@@ -327,17 +325,19 @@ class KWTable:
     def aggr_inplace(self, rhs=None, lcoeff=1.0, rcoeff=1.0):
         """
         """
-        if rcoeff == 0.0:   return          # No need to do 0-coeff aggregation
+        if lcoeff == 0.0:
+            self.table = cl.defaultdict(float)  # Left coeff is zero. Clear the table.
+        else:
+            self.scale_inplace(lcoeff)
 
-        if rhs != None:
+        if rhs != None and rcoeff != 0.0:
             for key, wt in rhs.table.iteritems():
                 if not key in self.table:
-                    if wt == 0.0:   continue    # Sanity check
                     self.table[key] = rcoeff * wt
                 else:
                     self.table[key] += rcoeff * wt
-                    if self.table[key] == 0.0:   del self.table[key]  # Delete the zero item.
-
+                if self.table[key] == 0.0:  del self.table[key]
+        
 
 
 
