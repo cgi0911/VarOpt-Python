@@ -210,7 +210,7 @@ class KWTable:
 
         for key, wt in self.table.iteritems():
             #rec = struct.pack("13sBBBd", key, 0, 0, 0, wt)
-            rec = struct.pack("8sBBBBBBBBd", key, 0, 0, 0, 0, 0, 0, 0, 0, wt)
+            rec = struct.pack("8s8sd", key, "", wt)
             outFile.write(rec)
 
         outFile.close()
@@ -337,7 +337,7 @@ class KWTable:
                 else:
                     self.table[key] += rcoeff * wt
                 if self.table[key] == 0.0:  del self.table[key]
-        
+
 
 
 

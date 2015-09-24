@@ -10,10 +10,10 @@ import netaddr as na
 RSVR_SIZE= 30000
 FN_PREF  = "./test_data/prefix_all.txt"
 DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
-RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/hourly_flowbin/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
+RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 16 * 24    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 30 * 24    # Ending timestamp
 FILETYPE = "flowbin"
 PERIOD   = 24    # # of time slots in a period
 R        = 1    # Forecast # of steps
@@ -68,7 +68,7 @@ def make_u_vec():
     ret = [-1.0 * GAMMA / float(PERIOD)] * (PERIOD+1)
     ret[0] = ALPHA
     ret[1] = BETA
-    
+
     ret = np.array(ret).reshape(PERIOD+1, 1)
     return ret
 
@@ -80,7 +80,7 @@ def read_rec(ts, pfx):
     pfx.query(table)
     pfx_val = pfx.get_values()
     return np.array(pfx_val).reshape(1, len(pfx_val))
-    
+
 
 
 
@@ -101,7 +101,7 @@ def forecast():
 
 def transition():
     #print m_mat.shape, x_vec.shape, u_vec.shape, y.shape
-    print x_vec
+    #print x_vec
     ret = np.dot(m_mat, x_vec) + np.dot(u_vec, y)
     return ret
 
@@ -116,7 +116,7 @@ def to_txt_file(vec, pfx, fn):
     for i in range(pfx_size):
         key_fields = keys[i].split(' ')
         nw = key_fields[0]
-        sd = key_fields[1]         
+        sd = key_fields[1]
         outfile.write("%s,%s,%f\n" %(sd, nw, vec[i]))
     outfile.close()
 
@@ -186,9 +186,6 @@ if __name__ == "__main__":
         el_time = time.time() - st_time
         print "   Elapsed time =", el_time
 
-    print l0.shape
-    print b0.shape
-    for s0 in s0_list: print s0.shape
 
     # ---------- Form state vector ----------
     print

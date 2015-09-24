@@ -7,12 +7,12 @@ import time
 
 RSVR_SIZE= 30000
 DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
-RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/hourly_flowbin/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
+RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 30 #16 * 24    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 20    # Ending timestamp
 FILETYPE = "flowbin"
-PERIOD   = 4    # # of time slots in a period
+PERIOD   = 8   # # of time slots in a period
 R        = 1    # Forecast # of steps
 ALPHA    = 0.2
 BETA     = 0.2
@@ -107,36 +107,21 @@ def do_samp():
 
 
 def transition():
+    ret = [pv.KWTable()] * (PERIOD+1)   # Must first return a new x_vec, then overwrite the x_vec
+
     for i in range(len(x_vec)):
-        st_time = time.time()
-
-        print "Working on transition of row #%d." %(i),
-
-        res = pv.KWTable()
-
         row_vec = m_mat[i]
         u       = u_vec[i]
 
         for j in range(len(row_vec)):
             if row_vec[j] == 0.0:   continue    # No need to do 0-coeff aggregation
-            print row_vec[j]
-            print "now res = %e, x_vec = %e" %(res.get_sum(), x_vec[j].get_sum())
-            print "aggr should be %e" %(res.get_sum() + row_vec[j] * x_vec[j].get_sum())
-            res.aggr_inplace(x_vec[j], 1.0, row_vec[j])
-            print "updated res = %e" %(res.get_sum())
-            print "updated res abbsum = %e" %(res.get_abssum())
+            ret[i].aggr_inplace(x_vec[j], 1.0, row_vec[j])
 
-        if not u == 0.0:    res.aggr_inplace(y, 1.0, u)
+        if not u == 0.0:    ret[i].aggr_inplace(y, 1.0, u)
 
-        ori_size = len(res)
-        res = res.rsvr_sample(RSVR_SIZE, in_place=False)
-        print "sampled res abssum = %e" %(res.get_abssum())
-        print "   Size = %d -> %d" %(ori_size, len(res)),
-        el_time = time.time() - st_time
-        print "   Elapsed time = %f" %(el_time)
-        x_vec[i] = res
-        print x_vec[i].get_abssum()
-    return
+        ret[i] = ret[i].rsvr_sample(RSVR_SIZE, in_place=False)
+
+    return ret
 
 
 
@@ -212,11 +197,9 @@ if __name__ == "__main__":
     for i in range(len(x_vec)):
         print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
 
-    do_samp()
+    do_samp()   # Sample each element in x_vec
 
-    del l0
-    del b0
-    del s0_list         # Remove unused KWTables to release memory
+    del l0, b0, s0_list         # Remove unused KWTables to release memory
 
     print
     print "New x_vec is updated. Check the new x_vec."
@@ -250,13 +233,10 @@ if __name__ == "__main__":
 
         # Then do the transition of current state vector
         print "Transition of x_vec..."
-        transition()
+        new_x_vec = transition()
+        x_vec = new_x_vec
 
         el_time_recur = time.time() - st_time_recur
         print "Transition of x_vec is complete. Elapsed time = %f" %(el_time_recur)
-        for i in range(len(x_vec)):
-            print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
-        print
-
 
         TS_CURR += INTERVAL
