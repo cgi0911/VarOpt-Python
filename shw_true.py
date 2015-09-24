@@ -101,6 +101,7 @@ def forecast():
 
 def transition():
     #print m_mat.shape, x_vec.shape, u_vec.shape, y.shape
+    print x_vec
     ret = np.dot(m_mat, x_vec) + np.dot(u_vec, y)
     return ret
 

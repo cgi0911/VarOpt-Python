@@ -119,16 +119,23 @@ def transition():
 
         for j in range(len(row_vec)):
             if row_vec[j] == 0.0:   continue    # No need to do 0-coeff aggregation
+            print row_vec[j]
+            print "now res = %e, x_vec = %e" %(res.get_sum(), x_vec[j].get_sum())
+            print "aggr should be %e" %(res.get_sum() + row_vec[j] * x_vec[j].get_sum())
             res.aggr_inplace(x_vec[j], 1.0, row_vec[j])
+            print "updated res = %e" %(res.get_sum())
+            print "updated res abbsum = %e" %(res.get_abssum())
 
         if not u == 0.0:    res.aggr_inplace(y, 1.0, u)
 
         ori_size = len(res)
         res = res.rsvr_sample(RSVR_SIZE, in_place=False)
+        print "sampled res abssum = %e" %(res.get_abssum())
         print "   Size = %d -> %d" %(ori_size, len(res)),
         el_time = time.time() - st_time
         print "   Elapsed time = %f" %(el_time)
         x_vec[i] = res
+        print x_vec[i].get_abssum()
     return
 
 
