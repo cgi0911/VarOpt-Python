@@ -3,8 +3,7 @@
 import pyvaropt as pv
 import os
 
-DATA_DIR    = "/home/users/cgi0911/Results/Waikato_5/temp/20150924-140215/fcast"
-#DATA_DIR    = "/home/users/cgi0911/Results/Waikato_5/fcast"
+DATA_DIR    = "/home/users/cgi0911/Results/Waikato_5/fcast"
 FN_PREF     = "./test_data/prefix_all.txt"
 QUERY_DIR   = "/home/users/cgi0911/Results/Waikato_5/temp/queried"
 

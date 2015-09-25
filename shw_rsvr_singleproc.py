@@ -10,7 +10,7 @@ DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 20    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 50    # Ending timestamp
 FILETYPE = "flowbin"
 PERIOD   = 8   # # of time slots in a period
 R        = 1    # Forecast # of steps
@@ -85,7 +85,7 @@ def forecast(r):
     ret.aggr_inplace(l, 1.0, 1.0)
     ret.aggr_inplace(b, 1.0, float(r))
     ret.aggr_inplace(s, 1.0, 1.0)
-    ret = ret.rsvr_sample(RSVR_SIZE, in_place=False)
+    ret = ret.rsvr_sample(RSVR_SIZE)
     el_time = time.time() - st_time
     print "Making %d-step forecast. Time stamp = %d. Elapsed time = %f" %(R, TS_CURR + INTERVAL * (R-1), el_time)
     return ret
@@ -93,11 +93,11 @@ def forecast(r):
 
 
 
-def do_samp():
+def samp_x_vec():
     for i in range(len(x_vec)):
         st_time = time.time()
         print "Sampling x_vec[%d]: KWTable(%-12x). Current size = %d" %(i, id(x_vec[i]), len(x_vec[i])),
-        res = x_vec[i].rsvr_sample(RSVR_SIZE, in_place=False)
+        res = x_vec[i].rsvr_sample(RSVR_SIZE)
         el_time = time.time() - st_time
         print "   Sampled size = %d    Elapsed time = %f" %(len(res), el_time)
         x_vec[i] = res
@@ -107,7 +107,8 @@ def do_samp():
 
 
 def transition():
-    ret = [pv.KWTable()] * (PERIOD+1)   # Must first return a new x_vec, then overwrite the x_vec
+    ret = [pv.KWTable() for _ in range(PERIOD+1)]       # Must first return a new x_vec, then overwrite the x_vec
+                                                        # Every element must be initialized individually!!
 
     for i in range(len(x_vec)):
         row_vec = m_mat[i]
@@ -115,11 +116,14 @@ def transition():
 
         for j in range(len(row_vec)):
             if row_vec[j] == 0.0:   continue    # No need to do 0-coeff aggregation
+            print "(%e * %f) +" %(x_vec[j].get_sum(), row_vec[j]),
             ret[i].aggr_inplace(x_vec[j], 1.0, row_vec[j])
 
+        print "(%e * %f) +" %(y.get_sum(), u),
         if not u == 0.0:    ret[i].aggr_inplace(y, 1.0, u)
-
-        ret[i] = ret[i].rsvr_sample(RSVR_SIZE, in_place=False)
+        print " -> %e" %(ret[i].get_sum())
+        ret[i] = ret[i].rsvr_sample(RSVR_SIZE)
+        #print id(ret[i])
 
     return ret
 
@@ -129,7 +133,7 @@ def transition():
 if __name__ == "__main__":
     l0 = pv.KWTable()
     b0 = pv.KWTable()
-    s0_list = [pv.KWTable() for i in range(PERIOD)]     # create (w-1) empty tables
+    s0_list = [pv.KWTable() for _ in range(PERIOD)]     # create (w-1) empty tables
                                                         # note that s0_list[0] is not used
                                                         # indices 1..(PERIOD-1) are used
 
@@ -197,7 +201,7 @@ if __name__ == "__main__":
     for i in range(len(x_vec)):
         print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
 
-    do_samp()   # Sample each element in x_vec
+    samp_x_vec()   # Sample each element in x_vec
 
     del l0, b0, s0_list         # Remove unused KWTables to release memory
 

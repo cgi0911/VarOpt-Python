@@ -51,7 +51,7 @@ class KWTable:
         - The values shall be signed double precision numbers.
         """
         # ---- Member attributes and initializations ----
-        self.table  = cl.defaultdict(float)     # Main body of table
+        self.table  = {}                        # Main body of table
         self.tid    = KWTable.id_counter
         KWTable.id_counter  += 1
 
@@ -293,7 +293,7 @@ class KWTable:
         """Do scalar scaling in place.
         """
         for key in self.table:
-            self.table[key] *= coeff
+            self.table[key] *= float(coeff)
         return
 
 
@@ -325,8 +325,20 @@ class KWTable:
     def aggr_inplace(self, rhs=None, lcoeff=1.0, rcoeff=1.0):
         """
         """
+        for key in self.table:
+            self.table[key] *= float(lcoeff)
+
+        for key in rhs.table:
+            if key in self.table:   self.table[key] += float(rcoeff) * rhs.table[key]
+            else:                   self.table[key] = float(rcoeff) * rhs.table[key]
+        
+        del_keys = [k for k, v in self.table.iteritems() if v == 0.0]
+        for k in del_keys: del self.table[k]
+
+
+        """
         if lcoeff == 0.0:
-            self.table = cl.defaultdict(float)  # Left coeff is zero. Clear the table.
+            self.table = {}  # Left coeff is zero. Clear the table.
         else:
             self.scale_inplace(lcoeff)
 
@@ -337,12 +349,13 @@ class KWTable:
                 else:
                     self.table[key] += rcoeff * wt
                 if self.table[key] == 0.0:  del self.table[key]
+        """
 
 
 
 
     #@profile
-    def rsvr_sample(self, k, in_place=True):
+    def rsvr_sample(self, k):
         """Use reservoir sampling to draw a k-entry sample out of the original KWTable.
         - Shall return a new KWTable.
         - Uses threshold sampling.
@@ -355,9 +368,8 @@ class KWTable:
         # of which the table is already uniquely keyed.
 
         if KWTable.SHOW_RSVR_SAMPLE:    print "VarOpt sample of %s down to size %d." %(hex(id(self)), k)
-        if len(self) <= k:  # Table size less than or equal to k.
-            if in_place == True:    return None
-            else:                   return KWTable(in_table=self)
+
+        if len(self) <= k:              return self # Table size less than or equal to k.
 
         else:
             dict_iter   = self.table.iteritems()    # Dictionary iterator
@@ -365,7 +377,7 @@ class KWTable:
             thresh      = 0.0                       # Threshold
             temp_thresh = 0.0                       # Temporary threshold
             t_list      = []                        # A list for items with abswt = threshold
-            x_dict      = cl.defaultdict(float)     # A dict for pending small items.
+            x_dict      = {}                        # A dict for pending small items.
             small_sum   = 0.0                       # Sum of all small items.
             rand_num    = 0.0                       # A uniform random number between 0 and 1
             del_keys    = {}                        # Memorize the keys to be deleted (for in-place mode)
@@ -383,7 +395,7 @@ class KWTable:
                 try:
                     key, wt     = dict_iter.next()
                     if wt == 0.0:   continue        # Sanity check. Skip zero-weight item.
-                    x_dict      = cl.defaultdict(float)
+                    x_dict      = {}
                     small_sum   = thresh * len(t_list)
 
                     if abs(wt) > thresh:                # Add new item to the l_heap
@@ -407,20 +419,13 @@ class KWTable:
                         t_list[d] = t_list[-1]      # Swap the item to be deleted with list tail.
                                                     # Swap-then-delete makes deletion quicker.
                         del t_list[-1]
-                        if in_place == True:
-                            if dkey in del_keys: print "Repeated del_key! 1"    # For debugging
-                            del_keys[dkey] = 1
                     else:                                                   # Drop an item from x_dict
                         rand_num -= len(t_list) * (1 - thresh/temp_thresh)
                         x_iter   = x_dict.iteritems()
                         while rand_num > 0:
                             dkey, abswt = x_iter.next()
                             rand_num -= (1 - abswt / temp_thresh)
-                        if in_place == True:
-                            if dkey in del_keys: print "Repeated del_key! 2"    # For debugging
-                            del_keys[dkey] = 1
                         del x_dict[dkey]
-
                     thresh = temp_thresh
                     for key, abswt in x_dict.iteritems():   t_list.append((key, abswt))
 
@@ -428,28 +433,11 @@ class KWTable:
                 except StopIteration:
                     break
 
-
-            if in_place == True:
-                for dkey in del_keys.keys():    del self.table[dkey]
-
-                for abswt, key in l_heap:
-                    self.table[key] = math.copysign(abswt, self.table[key])
-
-                for key, abswt in t_list:
-                    self.table[key] = math.copysign(thresh, self.table[key])
-
-                return None
-
-            else:
-                ret = KWTable()
-
-                for abswt, key in l_heap:
-                    ret.table[key] = math.copysign(abswt, self.table[key])
-
-                for key, abswt in t_list:
-                    ret.table[key] = math.copysign(thresh, self.table[key])
-
-                return ret
+            # Add items to ret
+            ret = KWTable()
+            for abswt, key in l_heap:   ret.table[key] = math.copysign(abswt, self.table[key])
+            for key, abswt in t_list:   ret.table[key] = math.copysign(thresh, self.table[key])
+            return ret
 
 
 
