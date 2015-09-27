@@ -52,8 +52,7 @@ class KWTable:
         """
         # ---- Member attributes and initializations ----
         self.table  = {}                        # Main body of table
-        self.tid    = KWTable.id_counter
-        KWTable.id_counter  += 1
+        self.thresh = 0.0                       # Will be assigned value after any rsvr_sampling
 
         # ---- Read keyword arguments ----
         if len(kwargs) == 0:    return          # Simply return an empty KWTable
@@ -235,48 +234,6 @@ class KWTable:
 
 
 
-    def __add__(lhs, rhs):
-        """Aggregate two KWTables. If there are overlapped keys in both KWTables, add their weight.
-        Shall return a new KWTable.
-        """
-        ret = KWTable()
-        for key, wt in lhs.table.iteritems():
-            ret.add_item(key, wt)
-        for key, wt in rhs.table.iteritems():
-            ret.add_item(key, wt)
-
-        return ret
-
-
-
-
-    def __iadd__(self, rhs):
-        """Aggregate rhs by coeff +1.0 to self in place.
-        """
-        for key, wt in rhs.table.iteritems():
-            if not key in self.table:
-                self.table[key] = wt
-            else:
-                self.table[key] += wt
-        return self
-
-
-
-
-    def __isub__(self, rhs):
-        """Aggregate rhs by coeff -1.0 from self in place.
-        """
-        for key, wt in rhs.table.iteritems():
-            if not key in self.table:
-                self.table[key] = -1.0 * wt
-            else:
-                self.table[key] -= wt
-                if self.table[key] == 0.0: del self.table[key]
-        return self
-
-
-
-
     def scaleby(self, coeff):
         """Every weight is scaled by a double precision coefficient.
         """
@@ -303,7 +260,9 @@ class KWTable:
         """Aggregate two KWTables by given coefficients. Return a new KWTable.
         ret = lcoeff * lhs + rcoeff * rhs
         """
+        self.thresh = 0.0               # Reset threshold
         ret = KWTable(in_table=self)
+
 
         if lcoeff != 1.0:
             ret.scale_inplace(lcoeff)
@@ -325,6 +284,7 @@ class KWTable:
     def aggr_inplace(self, rhs=None, lcoeff=1.0, rcoeff=1.0):
         """
         """
+        self.thresh = 0.0               # Reset threshold
         for key in self.table:
             self.table[key] *= float(lcoeff)
 
@@ -334,22 +294,6 @@ class KWTable:
         
         del_keys = [k for k, v in self.table.iteritems() if v == 0.0]
         for k in del_keys: del self.table[k]
-
-
-        """
-        if lcoeff == 0.0:
-            self.table = {}  # Left coeff is zero. Clear the table.
-        else:
-            self.scale_inplace(lcoeff)
-
-        if rhs != None and rcoeff != 0.0:
-            for key, wt in rhs.table.iteritems():
-                if not key in self.table:
-                    self.table[key] = rcoeff * wt
-                else:
-                    self.table[key] += rcoeff * wt
-                if self.table[key] == 0.0:  del self.table[key]
-        """
 
 
 
@@ -435,6 +379,7 @@ class KWTable:
 
             # Add items to ret
             ret = KWTable()
+            ret.thresh = thresh
             for abswt, key in l_heap:   ret.table[key] = math.copysign(abswt, self.table[key])
             for key, abswt in t_list:   ret.table[key] = math.copysign(thresh, self.table[key])
             return ret

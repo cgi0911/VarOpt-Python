@@ -10,9 +10,9 @@ DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 50    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 60    # Ending timestamp
 FILETYPE = "flowbin"
-PERIOD   = 8   # # of time slots in a period
+PERIOD   = 24   # # of time slots in a period
 R        = 1    # Forecast # of steps
 ALPHA    = 0.2
 BETA     = 0.2
@@ -109,6 +109,10 @@ def samp_x_vec():
 def transition():
     ret = [pv.KWTable() for _ in range(PERIOD+1)]       # Must first return a new x_vec, then overwrite the x_vec
                                                         # Every element must be initialized individually!!
+    print "ABSSUM of x_vec:",
+    for i in range(len(x_vec)):
+        print "%e" %(x_vec[i].get_abssum()),
+    print
 
     for i in range(len(x_vec)):
         row_vec = m_mat[i]
@@ -116,13 +120,14 @@ def transition():
 
         for j in range(len(row_vec)):
             if row_vec[j] == 0.0:   continue    # No need to do 0-coeff aggregation
-            print "(%e * %f) +" %(x_vec[j].get_sum(), row_vec[j]),
+            print "(%.4e * %.4f) +" %(x_vec[j].get_sum(), row_vec[j]),
             ret[i].aggr_inplace(x_vec[j], 1.0, row_vec[j])
 
-        print "(%e * %f) +" %(y.get_sum(), u),
+        print "(%.4e * %.4f) +" %(y.get_sum(), u),
         if not u == 0.0:    ret[i].aggr_inplace(y, 1.0, u)
-        print " -> %e" %(ret[i].get_sum())
+        print " -> %.4e, abssum = %.4e," %(ret[i].get_sum(), ret[i].get_abssum()),
         ret[i] = ret[i].rsvr_sample(RSVR_SIZE)
+        print "threshold = %.4e" %(ret[i].thresh)
         #print id(ret[i])
 
     return ret
