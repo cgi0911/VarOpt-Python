@@ -10,14 +10,14 @@ DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 300    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 60    # Ending timestamp
 FILETYPE = "flowbin"
 PERIOD   = 24   # # of time slots in a period
 M        = PERIOD + 2   # Dimension of transition matrix
 R        = 1    # Forecast # of steps
-ALPHA    = 0.2
-BETA     = 0.2
-GAMMA    = 0.2
+ALPHA    = 0.8
+BETA     = 0.8
+GAMMA    = 0.8
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
@@ -84,7 +84,7 @@ def forecast(r):
     ret.aggr_inplace(l, 1.0, 1.0)
     ret.aggr_inplace(b, 1.0, float(r))
     ret.aggr_inplace(s, 1.0, 1.0)
-    ret = ret.rsvr_sample(RSVR_SIZE)
+    ret = ret.rsvr_samp_split(RSVR_SIZE)
     el_time = time.time() - st_time
     print "Making %d-step forecast. Time stamp = %d. Elapsed time = %f" %(R, TS_CURR + INTERVAL * (R-1), el_time)
     return ret
@@ -96,7 +96,7 @@ def samp_x_vec():
     for i in range(len(x_vec)):
         st_time = time.time()
         print "Sampling x_vec[%d]: KWTable(%-12x). Current size = %d" %(i, id(x_vec[i]), len(x_vec[i])),
-        res = x_vec[i].rsvr_sample(RSVR_SIZE)
+        res = x_vec[i].rsvr_samp_split(RSVR_SIZE)
         el_time = time.time() - st_time
         print "   Sampled size = %d    Elapsed time = %f" %(len(res), el_time)
         x_vec[i] = res
@@ -108,10 +108,16 @@ def samp_x_vec():
 def transition():
     ret = [pv.KWTable() for _ in range(M)]              # Must first return a new x_vec, then overwrite the x_vec
                                                         # Every element must be initialized individually!!
-    print "ABSSUM of x_vec:",
-    for i in range(len(x_vec)):
-        print "%e" %(x_vec[i].get_abssum()),
+    
+    print "SUM of x_vec:",
+    for i in range(len(x_vec)):     print "%e" %(x_vec[i].get_sum()),
     print
+
+    print "ABSSUM of x_vec:",
+    for i in range(len(x_vec)):     print "%e" %(x_vec[i].get_abssum()),
+    print
+
+
 
     for i in range(len(x_vec)):
         row_vec = m_mat[i]
@@ -119,14 +125,14 @@ def transition():
 
         for j in range(len(row_vec)):
             if row_vec[j] == 0.0:   continue    # No need to do 0-coeff aggregation
-            print "(%.4e * %.4f) +" %(x_vec[j].get_sum(), row_vec[j]),
+            print "%.2e * %.4f +" %(x_vec[j].get_sum(), row_vec[j]),
             ret[i].aggr_inplace(x_vec[j], 1.0, row_vec[j])
 
-        print "(%.4e * %.4f) +" %(y.get_sum(), u),
+        print "(%.2e * %.4f)" %(y.get_sum(), u),
         if not u == 0.0:    ret[i].aggr_inplace(y, 1.0, u)
-        print " -> %.4e, abssum = %.4e," %(ret[i].get_sum(), ret[i].get_abssum()),
-        ret[i] = ret[i].rsvr_sample(RSVR_SIZE)
-        print "threshold = %.4e" %(ret[i].thresh)
+        print " -> sum = %.2e, abssum = %.2e," %(ret[i].get_sum(), ret[i].get_abssum()),
+        ret[i] = ret[i].rsvr_samp_split(RSVR_SIZE)
+        print "thr = %.2e, posthr = %.2e, negthr = %.2e" %(ret[i].thresh, ret[i].posthresh, ret[i].negthresh)
 
     return ret
 

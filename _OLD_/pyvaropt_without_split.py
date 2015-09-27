@@ -53,8 +53,6 @@ class KWTable:
         # ---- Member attributes and initializations ----
         self.table  = {}                        # Main body of table
         self.thresh = 0.0                       # Will be assigned value after any rsvr_sampling
-        self.posthresh = 0.0                    # Positive component threshold
-        self.negthresh = 0.0                    # Negative component threshold
 
         # ---- Read keyword arguments ----
         if len(kwargs) == 0:    return          # Simply return an empty KWTable
@@ -233,8 +231,6 @@ class KWTable:
         else:
             self.table[key] += wt
 
-        if self.table[key] == 0.0:  del self.table[key] # Sanity check
-
 
 
 
@@ -302,7 +298,7 @@ class KWTable:
 
 
 
-    def rsvr_samp_abswt(self, k):
+    def rsvr_samp_signed(self, k):
         """Use reservoir sampling to draw a k-entry sample out of the original KWTable.
         - Shall return a new KWTable.
         - Uses threshold sampling.
@@ -313,122 +309,79 @@ class KWTable:
         """
         # Note that we are working on a KWTable object,
         # of which the table is already uniquely keyed.
+
         if KWTable.SHOW_RSVR_SAMPLE:    print "VarOpt sample of %s down to size %d." %(hex(id(self)), k)
 
         if len(self) <= k:              return self # Table size less than or equal to k.
-        else:                           return self.rsvr_samp_general(k)
 
-
-
-
-    def rsvr_samp_split(self, k):
-        """Split the table into positive and negative components and samp separatedly.
-        """
-        if KWTable.SHOW_RSVR_SAMPLE:    print "VarOpt sample of %s down to size %d." %(hex(id(self)), k)
-
-        if len(self) <= k:              return self # Table size less than or equal to k.
         else:
-            pos = KWTable()
-            neg = KWTable()
-            # Split table into pos and neg components
-            dict_iter = self.table.iteritems()
-            for key, val in dict_iter:
-                if val > 0:   pos.add_item(key, val)
-                if val < 0:   neg.add_item(key, val)
-                else:       continue    # Sanity check. Remove 0-weight items.
-            
-            # Decide rsvr size for pos and neg components
-            k_pos = int( k * float(len(pos)) / float(len(pos) + len(neg)) )
-            k_neg = k - k_pos
-            
-            # Sample separately
-            pos = pos.rsvr_samp_general(k_pos)
-            neg = neg.rsvr_samp_general(k_neg)
+            dict_iter   = self.table.iteritems()    # Dictionary iterator
+            l_heap      = []                        # A min-heap for large (weight over threshold) items.
+            thresh      = 0.0                       # Threshold
+            temp_thresh = 0.0                       # Temporary threshold
+            t_list      = []                        # A list for items with abswt = threshold
+            x_dict      = {}                        # A dict for pending small items.
+            small_sum   = 0.0                       # Sum of all small items.
+            rand_num    = 0.0                       # A uniform random number between 0 and 1
+            del_keys    = {}                        # Memorize the keys to be deleted (for in-place mode)
 
-            # Aggregate the table
+
+            while len(l_heap) < k:                      # Push k items to heap.
+                key, wt = dict_iter.next()
+                if wt == 0.0:   continue                # Ignore zero items
+                heapq.heappush(l_heap, (abs(wt), key))  # Note that each element in the heap is a
+                                                        # 2-tuple (abs(wt), key). It is because tuples
+                                                        # compared in lexicographical order (compare first, then second)
+                                                        # Here we use abs(wt) as our heap weight.
+
+            while True:     # Add an item, drop an item
+                try:
+                    key, wt     = dict_iter.next()
+                    if wt == 0.0:   continue        # Sanity check. Skip zero-weight item.
+                    x_dict      = {}
+                    small_sum   = thresh * len(t_list)
+
+                    if abs(wt) > thresh:                # Add new item to the l_heap
+                        heapq.heappush(l_heap, (abs(wt), key))
+                    else:                               # Add new item to the x_dict
+                        x_dict[key] = abs(wt)
+                        small_sum   += abs(wt)
+
+                    while len(l_heap) > 0 and small_sum > (len(t_list) + len(x_dict) -1) * l_heap[0][0]:
+                                                                # Make sure to check if l_heap is non-empty...
+                        abswt, key  = heapq.heappop(l_heap)     # Move small items and add to x_dict.
+                        x_dict[key] = abswt
+                        small_sum   += abswt
+
+                    temp_thresh = small_sum / (len(t_list) + len(x_dict) - 1)   # Future threshold
+                    rand_num    = rd.uniform(0, 1)
+
+                    if rand_num < len(t_list) * (1 - thresh/temp_thresh):   # Drop an item from t_list
+                        d = int(rand_num / (1 - thresh/temp_thresh))
+                        dkey = t_list[d][0]
+                        t_list[d] = t_list[-1]      # Swap the item to be deleted with list tail.
+                                                    # Swap-then-delete makes deletion quicker.
+                        del t_list[-1]
+                    else:                                                   # Drop an item from x_dict
+                        rand_num -= len(t_list) * (1 - thresh/temp_thresh)
+                        x_iter   = x_dict.iteritems()
+                        while rand_num > 0:
+                            dkey, abswt = x_iter.next()
+                            rand_num -= (1 - abswt / temp_thresh)
+                        del x_dict[dkey]
+                    thresh = temp_thresh
+                    for key, abswt in x_dict.iteritems():   t_list.append((key, abswt))
+
+
+                except StopIteration:
+                    break
+
+            # Add items to ret
             ret = KWTable()
-            ret.aggr_inplace(pos, 1.0, 1.0)
-            ret.aggr_inplace(neg, 1.0, 1.0)
-            ret.posthresh = pos.thresh
-            ret.negthresh = neg.thresh * -1.0
+            ret.thresh = thresh
+            for abswt, key in l_heap:   ret.table[key] = math.copysign(abswt, self.table[key])
+            for key, abswt in t_list:   ret.table[key] = math.copysign(thresh, self.table[key])
             return ret
-
-
-
-
-    def rsvr_samp_general(self, k):
-        """Whether the input is positive, mixed or negative-signed, we use abs(wt) as 
-        the sampling weight.
-        """
-        if len(self) <= k:              return self # Table size less than or equal to k.
-        if k == 0:                      return KWTable()    # Empty sanity check
-
-        dict_iter   = self.table.iteritems()    # Dictionary iterator
-        l_heap      = []                        # A min-heap for large (weight over threshold) items.
-        thresh      = 0.0                       # Threshold
-        temp_thresh = 0.0                       # Temporary threshold
-        t_list      = []                        # A list for items with abswt = threshold
-        x_dict      = {}                        # A dict for pending small items.
-        small_sum   = 0.0                       # Sum of all small items.
-        rand_num    = 0.0                       # A uniform random number between 0 and 1
-        del_keys    = {}                        # Memorize the keys to be deleted (for in-place mode)
-
-        while len(l_heap) < k:                      # Push k items to heap.
-            key, wt = dict_iter.next()
-            if wt == 0.0:   continue                # Ignore zero items
-            heapq.heappush(l_heap, (abs(wt), key))  # Note that each element in the heap is a
-                                                    # 2-tuple (abs(wt), key). It is because tuples
-                                                    # compared in lexicographical order (compare first, then second)
-                                                    # Here we use abs(wt) as our heap weight.
-
-        while True:     # Add an item, drop an item
-            try:
-                key, wt     = dict_iter.next()
-                if wt == 0.0:   continue        # Sanity check. Skip zero-weight item.
-                x_dict      = {}
-                small_sum   = thresh * len(t_list)
-
-                if abs(wt) > thresh:                # Add new item to the l_heap
-                    heapq.heappush(l_heap, (abs(wt), key))
-                else:                               # Add new item to the x_dict
-                    x_dict[key] = abs(wt)
-                    small_sum   += abs(wt)
-
-                while len(l_heap) > 0 and small_sum > (len(t_list) + len(x_dict) -1) * l_heap[0][0]:
-                                                            # Make sure to check if l_heap is non-empty...
-                    abswt, key  = heapq.heappop(l_heap)     # Move small items and add to x_dict.
-                    x_dict[key] = abswt
-                    small_sum   += abswt
-
-                temp_thresh = small_sum / (len(t_list) + len(x_dict) - 1)   # Future threshold
-                rand_num    = rd.uniform(0, 1)
-
-                if rand_num < len(t_list) * (1 - thresh/temp_thresh):   # Drop an item from t_list
-                    d = int(rand_num / (1 - thresh/temp_thresh))
-                    dkey = t_list[d][0]
-                    t_list[d] = t_list[-1]      # Swap the item to be deleted with list tail.
-                                                # Swap-then-delete makes deletion quicker.
-                    del t_list[-1]
-                else:                                                   # Drop an item from x_dict
-                    rand_num -= len(t_list) * (1 - thresh/temp_thresh)
-                    x_iter   = x_dict.iteritems()
-                    while rand_num > 0:
-                        dkey, abswt = x_iter.next()
-                        rand_num -= (1 - abswt / temp_thresh)
-                    del x_dict[dkey]
-                thresh = temp_thresh
-                for key, abswt in x_dict.iteritems():   t_list.append((key, abswt))
-
-
-            except StopIteration:
-                break
-
-        # Add items to ret
-        ret = KWTable()
-        ret.thresh = thresh
-        for abswt, key in l_heap:   ret.table[key] = math.copysign(abswt, self.table[key])
-        for key, abswt in t_list:   ret.table[key] = math.copysign(thresh, self.table[key])
-        return ret
 
 
 

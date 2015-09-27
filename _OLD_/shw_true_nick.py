@@ -16,7 +16,6 @@ TS_START = 1181088000   # Starting timestamp (in seconds)
 TS_END   = TS_START + INTERVAL * 30 * 24    # Ending timestamp
 FILETYPE = "flowbin"
 PERIOD   = 24    # # of time slots in a period
-M        = PERIOD + 2
 R        = 1    # Forecast # of steps
 ALPHA    = 0.2
 BETA     = 0.2
@@ -37,8 +36,8 @@ if not os.path.exists(RES_DIR_TRUEFCAST):   os.makedirs(RES_DIR_TRUEFCAST)
 
 def make_trans_matrix():
     ret = []
-    for i in range(M):
-        ret.append([0.0] * (M))
+    for i in range(PERIOD + 1):
+        ret.append([0.0] * (PERIOD+1))
 
     ret[0][0] = 1.0 - ALPHA
     ret[0][1] = 1.0 - ALPHA
@@ -47,12 +46,17 @@ def make_trans_matrix():
     ret[1][1] = 1.0 - BETA
     ret[1][2] = -1.0 * BETA
 
-    for i in range(2, M-1):
-        ret[i][i+1] = 1.0
+    for i in range(PERIOD - 2):
+        ret[2+i][0] = (GAMMA / float(PERIOD))
+        ret[2+i][1] = (GAMMA / float(PERIOD))
+        ret[2+i][2] = (GAMMA / float(PERIOD))
+        ret[2+i][3+i] = 1.0
 
-    ret[M-1][0] = GAMMA
-    ret[M-1][1] = GAMMA
-    ret[M-1][2] = 1.0 - GAMMA
+    ret[PERIOD][0] = (GAMMA / float(PERIOD))
+    ret[PERIOD][1] = (GAMMA / float(PERIOD))
+    ret[PERIOD][2] = (GAMMA / float(PERIOD)) - 1.0
+    for i in range(PERIOD + 1 - 3):
+        ret[PERIOD][3+i] = -1.0
 
     ret = np.array(ret)     # Make it a numpy array
     return ret
@@ -61,11 +65,11 @@ def make_trans_matrix():
 
 
 def make_u_vec():
-    ret = [0.0] * M
+    ret = [-1.0 * GAMMA / float(PERIOD)] * (PERIOD+1)
     ret[0] = ALPHA
     ret[1] = BETA
-    ret[M-1] = GAMMA
-    ret = np.array(ret).reshape(M, 1)
+
+    ret = np.array(ret).reshape(PERIOD+1, 1)
     return ret
 
 
@@ -80,19 +84,14 @@ def read_rec(ts, pfx):
 
 
 
-def forecast(r):
+def forecast():
     # r is the # of steps to look ahead.
-    if r < 1:
-        print "Cannot make forecast! Wrong number of steps = %d." %(r)
-        return None
-
-    one_pos         = r % PERIOD + 2
-    f_vec           = [1.0, float(r)] + [0.0] * (PERIOD)
-    f_vec[one_pos]  = 1.0
-    f_mat           = np.array(f_vec).reshape(1, M)
-    
+    one_pos = 1 + (R % PERIOD)
+    f_vec = [1.0, float(R)] + [0.0] * (PERIOD-1)
+    f_vec[one_pos] = 1.0
+    f_mat = np.array(f_vec).reshape(1, PERIOD+1)
+    #print f_mat.shape, x_vec.shape
     ret = np.dot(f_mat, x_vec).flatten()
-
     el_time = time.time() - st_time
     print "Making %d-step forecast. Time stamp = %d. Elapsed time = %f" %(R, TS_CURR + INTERVAL * (R-1), el_time)
     return ret
@@ -180,7 +179,7 @@ if __name__ == "__main__":
         print "   Elapsed time =", el_time
 
 
-    for i in range(PERIOD):     # 0...(PERIOD - 1)
+    for i in range(1, PERIOD):
         st_time = time.time()
         s0_list[i] = s0_list[i] - l0
         print "s0_list[%d] -= l0" %(i),
@@ -191,7 +190,7 @@ if __name__ == "__main__":
     # ---------- Form state vector ----------
     print
     print "--------- Form initial state vector and sample each element ----------"
-    x_vec = np.array([l0.flatten(), b0.flatten()] + [s0.flatten() for s0 in s0_list])
+    x_vec = np.array([l0.flatten(), b0.flatten()] + [s0.flatten() for s0 in s0_list[1:]])
     print "---------- End of initialization ----------"
 
     # ---------- Recurrence: Transition and forecast ----------
@@ -209,7 +208,7 @@ if __name__ == "__main__":
         # ---------- Forecast based on existing state vector ----------
         print
         print "## Iteration of time %d ##" %(TS_CURR)
-        fcast = forecast(R)     # Make one step forecast.
+        fcast = forecast()     # Make one step forecast.
         fcast_fn = os.path.join(RES_DIR_TRUEFCAST, "%d.txt" %(TS_CURR + (R-1)*INTERVAL))
         to_txt_file(fcast, pfx, fcast_fn)
 
