@@ -1,20 +1,16 @@
 #!/usr/bin/python
 
-"""
-Using Nick's "NORMALIZED" SHW Model. Please see the writeup.
-"""
-
 import random as rd
 import time
 import math
 
 rd.seed(time.time())
 
-RUNS    = 10        # Number of runs
-W       = 24        # Periodicity
-KMAX    = 10000     # Maximum iterations
-STEPMEAN= 1e-3      # Mean step size
-TEMP0   = 1e10      # Initial temperature
+RUNS = 1            # Number of runs
+W = 24              # Periodicity
+KMAX = 100000        # Maximum iterations
+STEPMEAN = 1e-3     # Mean step size
+TEMP0 = 1e10        # Initial temperature
 COOLING = 0.9999    # Cooling ratio
 
 def calc_fcast(t, alpha, beta, gamma):
@@ -24,29 +20,28 @@ def calc_fcast(t, alpha, beta, gamma):
 
     l = sum(t[W:2*W]) / float(W)
     b = sum([t[i+W] - t[i] for i in range(W)]) / (float(W) ** 2)
-    s = [t[i+W] - l for i in range(W-1)]      # is a list of length (W-1)
+    s = [t[i+W] - l for i in range(W)]      # is a list of length W
     
     fcast = []
 
     for i in range(len(t) - 2*W):
         y = t[2*W+i]
+        #print ["%.3E" %x for x in [y, l, b] + s]
         # forecast
-        f = l + b + s[0]
+        f = l + b + s[1]
         fcast.append(f)
         # l, b, s evolution
-        l_new = (1.0 - alpha) * l   + (1.0 - alpha) * b     + (-1.0 * alpha) * s[0]     + alpha * y
-        b_new = (-1.0 * beta ) * l  + (1.0 - beta) * b      + (-1.0 * beta) * s[0]      + beta * y
-        s_new = [0.0] * (W-1)
-        for j in range(W-2):
-            s_new[j] = (gamma/W) * l + (gamma/W) * b + (gamma/W) * s[0] + s[j+1] - (gamma/W) * y
-        s_new[W-2] = (gamma/W) * l + (gamma/W) * b + (gamma/W - 1) * s[0] - sum(s[1:])
-        # Update
+        l_new = (1.0 - alpha) * l   + (1.0 - alpha) * b     + (-1.0 * alpha) * s[0] + alpha * y
+        b_new = (-1.0 * beta ) * l  + (1.0 - beta) * b      + (-1.0 * beta) * s[0]  + beta * y
+        s_new = (-1.0 * gamma) * l  + (-1.0 * gamma) * b    + (1.0 - gamma) * s[0]  + gamma * y
+        s.pop(0)
         l = l_new
         b = b_new
-        s = (s_new)
+        s.append(s_new)
 
     return fcast
     
+
 
 
 
@@ -143,10 +138,8 @@ def sim_anneal(ts, alpha, beta, gamma):
 ts = []
 in_file = open("./ts.txt")
 for line in in_file:    ts.append(float(line.rstrip()))
-out_file = open("./opt.csv", "w")
 
-lowest_energy = float("inf")
-best_fcast = None
+out_file = open("./opt.txt", "w")
 
 for i in range(RUNS):
     alpha   = rd.random()   # Random initial values. Subject to change
@@ -158,15 +151,19 @@ for i in range(RUNS):
     energy, fcast, a_opt, b_opt, g_opt, update = sim_anneal(ts, alpha, beta, gamma)
     el_time = time.time() - st_time
 
-    print "energy = %.6e, alpha = %.6f, beta = %.6f, gamma = %.6f, iterations = %-6d, elapsed time = %.3f" %(energy, a_opt, b_opt, g_opt, update, el_time) 
-    out_file.write("%d,%.20f,%.20f,%.20f,%.20f,%d\n" %(i, energy, a_opt, b_opt, g_opt, update))
+    print "energy = %.6e, alpha = %.6f, beta = %.6f, gamma = %.6f, iterations = %-6d, elapsed time = %.3f" %(energy, a_opt, b_opt, g_opt, update, el_time)
 
-    if energy < lowest_energy:  best_fcast = fcast
+    #print
+    #for t1, t2 in zip(ts[2*W:2*W+100], fcast[:100]):
+    #    print "%.6e\t%.6e\t%.6e" %(t1, t2, t1-t2)
+    #print 
+    
+    out_file.write("%d,%.20f,%.20f,%.20f,%.20f,%d\n" %(i, energy, a_opt, b_opt, g_opt, update))
 
 out_file.close()
 
-out_file = open("./compare.csv", "w")
-cnt = 0
-for ts1, ts2 in zip(ts[2*W:], best_fcast):
-    out_file.write("%d,%.20e,%.20e,%.20e\n" %(cnt, ts1, ts2, ts1-ts2))
+cnt=0
+for ts1, ts2 in zip(ts[2*W:], fcast):
+    print "%d,%.20e,%.20e,%.20e" %(cnt, ts1, ts2, ts1-ts2)
     cnt += 1
+

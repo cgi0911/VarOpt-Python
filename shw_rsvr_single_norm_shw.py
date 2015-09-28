@@ -10,14 +10,14 @@ DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 60    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 72    # Ending timestamp
 FILETYPE = "flowbin"
 PERIOD   = 24   # # of time slots in a period
-M        = PERIOD + 2   # Dimension of transition matrix
+M        = PERIOD + 1   # Dimension of transition matrix
 R        = 1    # Forecast # of steps
-ALPHA    = 0.8
-BETA     = 0.8
-GAMMA    = 0.8
+ALPHA    = 0.868
+BETA     = 0.010
+GAMMA    = 0.131
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
@@ -31,10 +31,10 @@ if not os.path.exists(RES_DIR_FCAST):   os.makedirs(RES_DIR_FCAST)
 
 
 
-
 def make_trans_matrix():
     ret = []
-    for i in range(M):  ret.append([0.0] * M)
+    for i in range(M):
+        ret.append([0.0] * (M))
 
     ret[0][0] = 1.0 - ALPHA
     ret[0][1] = 1.0 - ALPHA
@@ -44,11 +44,16 @@ def make_trans_matrix():
     ret[1][2] = -1.0 * BETA
 
     for i in range(2, M-1):
-       ret[i][i+1] = 1.0
+        ret[i][0]   = GAMMA/PERIOD
+        ret[i][1]   = GAMMA/PERIOD
+        ret[i][2]   = GAMMA/PERIOD
+        ret[i][i+1] = 1.0
 
-    ret[M-1][0] = GAMMA
-    ret[M-1][1] = GAMMA
-    ret[M-2][2] = 1.0 - GAMMA
+    ret[M-1][0] = GAMMA/PERIOD
+    ret[M-1][1] = GAMMA/PERIOD
+    ret[M-1][2] = GAMMA/PERIOD - 1.0
+    for i in range(3,M):    ret[M-1][i] = -1.0
+
     return ret
 
 
@@ -58,7 +63,7 @@ def make_u_vec():
     ret = [0.0] * M
     ret[0] = ALPHA
     ret[1] = BETA
-    ret[M-1] = GAMMA
+    for i in range(2, M):   ret[i] = -1.0 * GAMMA / PERIOD
     return ret
 
 
@@ -80,7 +85,7 @@ def forecast(r):
     ret = pv.KWTable()
     l = x_vec[0]
     b = x_vec[1]
-    s = x_vec[r % PERIOD + 2]  # S_{t-w+1}
+    s = x_vec[r % PERIOD + 1]  # S_{t-w+1}
     ret.aggr_inplace(l, 1.0, 1.0)
     ret.aggr_inplace(b, 1.0, float(r))
     ret.aggr_inplace(s, 1.0, 1.0)
@@ -119,7 +124,7 @@ def transition():
 
 
 
-    for i in range(len(x_vec)):
+    for i in range(M):
         row_vec = m_mat[i]
         u       = u_vec[i]
 
@@ -142,7 +147,8 @@ def transition():
 if __name__ == "__main__":
     l0 = pv.KWTable()
     b0 = pv.KWTable()
-    s0_list = [pv.KWTable() for _ in range(PERIOD)]     # create (w-1) empty tables
+    s0_list = []
+    #s0_list = [pv.KWTable() for _ in range(PERIOD)]     # create (w-1) empty tables
                                                         # note that s0_list[0] is not used
                                                         # indices 1..(PERIOD-1) are used
 
@@ -186,14 +192,16 @@ if __name__ == "__main__":
         print "Read time slot", TS_CURR, "   l0 += y/W",
         print "   b0 += y/W^2",
         if i < (PERIOD-1):   # Filling S_{0,1}, S_{0,2}, ... , S_{0,W-1}
-            s0_list[i+1].aggr_inplace(y, 1.0, 1.0)
-            print "   s0_list[%d] += y" %(i+1),
+            #s0_list[i+1].aggr_inplace(y, 1.0, 1.0)
+            s0_list.append(pv.KWTable())
+            s0_list[-1].aggr_inplace(y, 1.0, 1.0) 
+            print "   s0_list[%d] += y" %(i),
         TS_CURR += INTERVAL
         el_time = time.time() - st_time
         print "   Elapsed time =", el_time
 
 
-    for i in range(PERIOD):     # 0...(PERIOD-1)
+    for i in range(len(s0_list)):     # 0...(PERIOD-1)
         st_time = time.time()
         s0_list[i].aggr_inplace(l0, 1.0, -1.0)
         print "s0_list[%d] -= l0" %(i),

@@ -10,13 +10,14 @@ DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 60    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 248    # Ending timestamp
 FILETYPE = "flowbin"
 PERIOD   = 24   # # of time slots in a period
+M        = PERIOD + 2   # Dimension of transition matrix
 R        = 1    # Forecast # of steps
-ALPHA    = 0.2
-BETA     = 0.2
-GAMMA    = 0.2
+ALPHA    = 0.025654
+BETA     = 0.000359
+GAMMA    = 0.082619
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
@@ -33,8 +34,7 @@ if not os.path.exists(RES_DIR_FCAST):   os.makedirs(RES_DIR_FCAST)
 
 def make_trans_matrix():
     ret = []
-    for i in range(PERIOD + 1):
-        ret.append([0.0] * (PERIOD+1))
+    for i in range(M):  ret.append([0.0] * M)
 
     ret[0][0] = 1.0 - ALPHA
     ret[0][1] = 1.0 - ALPHA
@@ -43,27 +43,22 @@ def make_trans_matrix():
     ret[1][1] = 1.0 - BETA
     ret[1][2] = -1.0 * BETA
 
-    for i in range(PERIOD - 2):
-        ret[2+i][0] = (GAMMA / float(PERIOD))
-        ret[2+i][1] = (GAMMA / float(PERIOD))
-        ret[2+i][2] = (GAMMA / float(PERIOD))
-        ret[2+i][3+i] = 1.0
+    for i in range(2, M-1):
+       ret[i][i+1] = 1.0
 
-    ret[PERIOD][0] = (GAMMA / float(PERIOD))
-    ret[PERIOD][1] = (GAMMA / float(PERIOD))
-    ret[PERIOD][2] = (GAMMA / float(PERIOD)) - 1.0
-    for i in range(PERIOD + 1 - 3):
-        ret[PERIOD][3+i] = -1.0
-
+    ret[M-1][0] = GAMMA
+    ret[M-1][1] = GAMMA
+    ret[M-2][2] = 1.0 - GAMMA
     return ret
 
 
 
 
 def make_u_vec():
-    ret = [-1.0 * GAMMA / float(PERIOD)] * (PERIOD+1)
+    ret = [0.0] * M
     ret[0] = ALPHA
     ret[1] = BETA
+    ret[M-1] = GAMMA
     return ret
 
 
@@ -77,15 +72,19 @@ def read_rec(ts):
 
 def forecast(r):
     # r is the # of steps to look ahead.
+    if r < 1:
+        print "Cannot make forecast! Wrong number of steps = %d." %(r)
+        return None
+
     st_time = time.time()
     ret = pv.KWTable()
     l = x_vec[0]
     b = x_vec[1]
-    s = x_vec[r%PERIOD+1]  # r-th seasonal component
+    s = x_vec[r % PERIOD + 2]  # S_{t-w+1}
     ret.aggr_inplace(l, 1.0, 1.0)
     ret.aggr_inplace(b, 1.0, float(r))
     ret.aggr_inplace(s, 1.0, 1.0)
-    ret = ret.rsvr_sample(RSVR_SIZE)
+    ret = ret.rsvr_samp_split(RSVR_SIZE)
     el_time = time.time() - st_time
     print "Making %d-step forecast. Time stamp = %d. Elapsed time = %f" %(R, TS_CURR + INTERVAL * (R-1), el_time)
     return ret
@@ -97,7 +96,7 @@ def samp_x_vec():
     for i in range(len(x_vec)):
         st_time = time.time()
         print "Sampling x_vec[%d]: KWTable(%-12x). Current size = %d" %(i, id(x_vec[i]), len(x_vec[i])),
-        res = x_vec[i].rsvr_sample(RSVR_SIZE)
+        res = x_vec[i].rsvr_samp_split(RSVR_SIZE)
         el_time = time.time() - st_time
         print "   Sampled size = %d    Elapsed time = %f" %(len(res), el_time)
         x_vec[i] = res
@@ -107,12 +106,18 @@ def samp_x_vec():
 
 
 def transition():
-    ret = [pv.KWTable() for _ in range(PERIOD+1)]       # Must first return a new x_vec, then overwrite the x_vec
+    ret = [pv.KWTable() for _ in range(M)]              # Must first return a new x_vec, then overwrite the x_vec
                                                         # Every element must be initialized individually!!
-    print "ABSSUM of x_vec:",
-    for i in range(len(x_vec)):
-        print "%e" %(x_vec[i].get_abssum()),
+    
+    print "SUM of x_vec:",
+    for i in range(len(x_vec)):     print "%e" %(x_vec[i].get_sum()),
     print
+
+    print "ABSSUM of x_vec:",
+    for i in range(len(x_vec)):     print "%e" %(x_vec[i].get_abssum()),
+    print
+
+
 
     for i in range(len(x_vec)):
         row_vec = m_mat[i]
@@ -120,15 +125,14 @@ def transition():
 
         for j in range(len(row_vec)):
             if row_vec[j] == 0.0:   continue    # No need to do 0-coeff aggregation
-            print "(%.4e * %.4f) +" %(x_vec[j].get_sum(), row_vec[j]),
+            print "%.2e * %.4f +" %(x_vec[j].get_sum(), row_vec[j]),
             ret[i].aggr_inplace(x_vec[j], 1.0, row_vec[j])
 
-        print "(%.4e * %.4f) +" %(y.get_sum(), u),
+        print "(%.2e * %.4f)" %(y.get_sum(), u),
         if not u == 0.0:    ret[i].aggr_inplace(y, 1.0, u)
-        print " -> %.4e, abssum = %.4e," %(ret[i].get_sum(), ret[i].get_abssum()),
-        ret[i] = ret[i].rsvr_sample(RSVR_SIZE)
-        print "threshold = %.4e" %(ret[i].thresh)
-        #print id(ret[i])
+        print " -> sum = %.2e, abssum = %.2e," %(ret[i].get_sum(), ret[i].get_abssum()),
+        ret[i] = ret[i].rsvr_samp_split(RSVR_SIZE)
+        print "thr = %.2e, posthr = %.2e, negthr = %.2e" %(ret[i].thresh, ret[i].posthresh, ret[i].negthresh)
 
     return ret
 
@@ -159,6 +163,7 @@ if __name__ == "__main__":
 
     # ---------- First training period ----------
     print "---------- Initialization: First training period ----------"
+    st_time_init = time.time()
     TS_CURR = TS_START
     for i in range(PERIOD):
         st_time = time.time()
@@ -188,18 +193,17 @@ if __name__ == "__main__":
         print "   Elapsed time =", el_time
 
 
-    for i in range(1, PERIOD):
+    for i in range(PERIOD):     # 0...(PERIOD-1)
         st_time = time.time()
         s0_list[i].aggr_inplace(l0, 1.0, -1.0)
         print "s0_list[%d] -= l0" %(i),
         el_time = time.time() - st_time
         print "   Elapsed time =", el_time
 
-
     # ---------- Form state vector ----------
     print
     print "--------- Form initial state vector and sample each element ----------"
-    x_vec = [l0, b0] + s0_list[1:]
+    x_vec = [l0, b0] + s0_list
 
 
     # ---------- Sample each element ----------
@@ -215,7 +219,8 @@ if __name__ == "__main__":
     for i in range(len(x_vec)):
         print "x_vec[%d]: KWTable(%-12x)    size = %d" %(i, id(x_vec[i]), len(x_vec[i]))
     print
-    print "---------- End of initialization ----------"
+    el_time_init = time.time() - st_time_init
+    print "---------- End of initialization. Elapsed time = %f ----------" %(el_time_init)
 
     # ---------- Recurrence: Transition and forecast ----------
     print

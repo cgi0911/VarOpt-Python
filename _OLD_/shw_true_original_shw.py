@@ -13,14 +13,14 @@ DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
 RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
-TS_END   = TS_START + INTERVAL * 30 * 24    # Ending timestamp
+TS_END   = TS_START + INTERVAL * 72    # Ending timestamp
 FILETYPE = "flowbin"
 PERIOD   = 24    # # of time slots in a period
 M        = PERIOD + 2
 R        = 1    # Forecast # of steps
-ALPHA    = 0.2
-BETA     = 0.2
-GAMMA    = 0.2
+ALPHA    = 0.761759
+BETA     = 0.000000
+GAMMA    = 0.146055
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
@@ -210,6 +210,7 @@ if __name__ == "__main__":
         print
         print "## Iteration of time %d ##" %(TS_CURR)
         fcast = forecast(R)     # Make one step forecast.
+        print "Forecast sum = %.3e" %(fcast[0])
         fcast_fn = os.path.join(RES_DIR_TRUEFCAST, "%d.txt" %(TS_CURR + (R-1)*INTERVAL))
         to_txt_file(fcast, pfx, fcast_fn)
 
