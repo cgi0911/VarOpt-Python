@@ -22,9 +22,11 @@ FILETYPE = "flowbin"
 PERIOD   = 24   # # of time slots in a period
 M        = PERIOD + 1   # Dimension of transition matrix
 R        = 1    # Forecast # of steps
-ALPHA    = 0.900
-BETA     = 0.900
-GAMMA    = 0.900
+ALPHA    = 0.800
+BETA     = 0.100
+GAMMA    = 0.200
+
+SAMPLE_MODE = "abswt"
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
@@ -97,7 +99,10 @@ def forecast(r):
     ret.aggr_inplace(l, 1.0, 1.0)
     ret.aggr_inplace(b, 1.0, float(r))
     ret.aggr_inplace(s, 1.0, 1.0)
-    ret = ret.rsvr_samp_split(RSVR_SIZE)
+    if SAMPLE_MODE == "abswt":
+        ret = ret.rsvr_samp_abswt(RSVR_SIZE)
+    else:
+        ret = ret.rsvr_samp_split(RSVR_SIZE)
     el_time = time.time() - st_time
     print "Making %d-step forecast. Time stamp = %d. Elapsed time = %f" %(R, TS_CURR + INTERVAL * (R-1), el_time)
     return ret
@@ -109,7 +114,10 @@ def samp_x_vec():
     for i in range(len(x_vec)):
         st_time = time.time()
         print "Sampling x_vec[%d]: KWTable(%-12x). Current size = %d" %(i, id(x_vec[i]), len(x_vec[i])),
-        res = x_vec[i].rsvr_samp_split(RSVR_SIZE)
+        if SAMPLE_MODE == "abswt":
+            res = x_vec[i].rsvr_samp_abswt(RSVR_SIZE)
+        else:
+            res = x_vec[i].rsvr_samp_split(RSVR_SIZE)
         el_time = time.time() - st_time
         print "   Sampled size = %d    Elapsed time = %f" %(len(res), el_time)
         x_vec[i] = res
@@ -144,7 +152,10 @@ def transition():
         print "(%.2e * %.4f)" %(y.get_sum(), u),
         if not u == 0.0:    ret[i].aggr_inplace(y, 1.0, u)
         print " -> sum = %.2e, abssum = %.2e," %(ret[i].get_sum(), ret[i].get_abssum()),
-        ret[i] = ret[i].rsvr_samp_split(RSVR_SIZE)
+        if SAMPLE_MODE == "abswt":
+            ret[i] = ret[i].rsvr_samp_abswt(RSVR_SIZE)
+        else:
+            ret[i] = ret[i].rsvr_samp_split(RSVR_SIZE)
         print "thr = %.2e, posthr = %.2e, negthr = %.2e" %(ret[i].thresh, ret[i].posthresh, ret[i].negthresh)
 
     return ret
