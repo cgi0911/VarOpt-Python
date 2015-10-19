@@ -6,8 +6,15 @@ import os
 import time
 
 RSVR_SIZE= 30000
-DATA_DIR = "/home/users/cgi0911/Data/Waikato_5/hourly_flowbin/"
-RES_DIR  = "/home/users/cgi0911/Results/Waikato_5/temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime()))
+
+#DATA_HOME= "/home/users/cgi0911/Data/Waikato_5/"
+DATA_HOME= "/home/cgi0911/sg3000/PacketTraces/Waikato_5/"
+DATA_DIR = os.path.join(DATA_HOME, "hourly_flowbin")
+
+#RES_HOME = "/home/users/cgi0911/Results/Waikato_5/"
+RES_HOME = "/home/cgi0911/Results/Waikato_5/"
+RES_DIR  = os.path.join(RES_HOME, "temp/%s/" %(time.strftime("%Y%m%d-%H%M%S", time.localtime())))
+
 INTERVAL = 3600         # Seconds in a time slot
 TS_START = 1181088000   # Starting timestamp (in seconds)
 TS_END   = TS_START + INTERVAL * 16 * 24    # Ending timestamp
@@ -15,9 +22,9 @@ FILETYPE = "flowbin"
 PERIOD   = 24   # # of time slots in a period
 M        = PERIOD + 1   # Dimension of transition matrix
 R        = 1    # Forecast # of steps
-ALPHA    = 0.868
-BETA     = 0.010
-GAMMA    = 0.131
+ALPHA    = 0.900
+BETA     = 0.900
+GAMMA    = 0.900
 
 # ---------- Global variables and objects ----------
 TS_CURR  = 0                # Current timestamp
@@ -28,6 +35,7 @@ u_vec    = []               # U-Vector for transition
 
 RES_DIR_FCAST = os.path.join(RES_DIR, "fcast")
 if not os.path.exists(RES_DIR_FCAST):   os.makedirs(RES_DIR_FCAST)
+
 
 
 
@@ -155,6 +163,8 @@ if __name__ == "__main__":
     print
     print "-" * 80
     print "Using Python interpreter:", sys.executable
+    print "Data source folder:", DATA_DIR
+    print "Result folder:", RES_DIR
     print "TS_START = %d, TS_END = %d" %(TS_START, TS_END)
     print "INTERVAL = %d, PERIOD = %d intervals" %(INTERVAL, PERIOD)
     print "(ALPHA, BETA, GAMMA) = (%f, %f, %f)" %(ALPHA, BETA, GAMMA)
