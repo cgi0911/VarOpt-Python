@@ -3,7 +3,7 @@
 """
 Using Nick's "NORMALIZED" SHW Model. Please see the writeup.
 """
-
+# Imports
 import random as rd
 import time
 import math
